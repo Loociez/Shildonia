@@ -1,0 +1,182 @@
+<!DOCTYPE html>
+<html>
+<head>
+  <title>Rust Resource Challenge</title>
+  <style>
+    body { background:#2e2b22; color:#cfc9b8; font-family: monospace; text-align:center; }
+    #resources { margin-top: 20px; }
+    .resource {
+      display: inline-block;
+      width: 100px; height: 100px;
+      background-color: #604830;
+      border: 3px solid #a37453;
+      margin: 10px;
+      line-height: 100px;
+      font-weight: bold;
+      cursor: pointer;
+      user-select: none;
+      border-radius: 8px;
+      box-shadow: 0 0 10px #b28658;
+      transition: background-color 0.3s ease;
+    }
+    .resource.disabled {
+      background-color: #40352a;
+      cursor: not-allowed;
+      box-shadow: none;
+      color: #7a7466;
+    }
+    #scoreboard, #timer, #message {
+      margin-top: 20px;
+      font-size: 24px;
+    }
+    button {
+      margin-top: 20px;
+      padding: 10px 20px;
+      font-size: 18px;
+      cursor: pointer;
+      background-color: #b36b00;
+      border: none;
+      border-radius: 5px;
+      color: white;
+      user-select: none;
+    }
+  </style>
+</head>
+<body>
+
+<h1>Rust Resource Challenge</h1>
+<p>Gather resources and avoid hazards to reach the target score before time runs out!</p>
+
+<div id="resources">
+  <div class="resource" data-points="3" id="wood">Wood</div>
+  <div class="resource" data-points="5" id="stone">Stone</div>
+  <div class="resource" data-points="7" id="scrap">Scrap</div>
+  <div class="resource" data-points="10" id="metal">Metal</div>
+  <div class="resource" data-points="-5" id="trap" style="background-color:#7a2222; border-color:#a55353;">Radiation</div>
+</div>
+
+<div id="scoreboard">Score: 0</div>
+<div id="timer">Time left: 20</div>
+<div id="message"></div>
+<button id="startBtn">Start Challenge</button>
+
+<script>
+  // Helper to get URL params
+  function getQueryParams() {
+    const params = {};
+    window.location.search.substring(1).split("&").forEach(pair => {
+      const [key, value] = pair.split("=");
+      if(key) params[key] = decodeURIComponent(value);
+    });
+    return params;
+  }
+
+  const resources = document.querySelectorAll('.resource');
+  const scoreBoard = document.getElementById('scoreboard');
+  const timerEl = document.getElementById('timer');
+  const messageEl = document.getElementById('message');
+  const startBtn = document.getElementById('startBtn');
+
+  // Read challenge config from URL or set defaults
+  const params = getQueryParams();
+
+  const timeLimit = parseInt(params.time) || 20;
+  const targetScore = parseInt(params.target) || 30;
+  const cooldownTime = parseInt(params.cooldown) || 2000;
+  const trapActive = params.trap === "1";
+  const winningCode = params.code || "RUST-0000";
+
+  let score = 0;
+  let timeLeft = timeLimit;
+  let timerId = null;
+  let gameActive = false;
+
+  // Prevent replay for this browser/session (basic)
+  const playedKey = "rust_challenge_played_" + winningCode;
+
+  if(localStorage.getItem(playedKey)) {
+    startBtn.disabled = true;
+    messageEl.textContent = "You have already played this challenge.";
+  }
+
+  function updateScore(points) {
+    score += points;
+    if (score < 0) score = 0;
+    scoreBoard.textContent = 'Score: ' + score;
+    if (score >= targetScore) {
+      endGame(true);
+    }
+  }
+
+  function endGame(won) {
+    gameActive = false;
+    clearInterval(timerId);
+    resources.forEach(r => r.classList.remove('disabled'));
+    if (won) {
+      messageEl.innerHTML = "Challenge complete! Your code:<br><strong>" + winningCode + "</strong>";
+      // Mark played so they can't replay
+      localStorage.setItem(playedKey, "true");
+    } else {
+      messageEl.textContent = "Time's up! Better luck next time.";
+    }
+    startBtn.disabled = false;
+  }
+
+  function resourceCooldown(resource) {
+    resource.classList.add('disabled');
+    setTimeout(() => {
+      if (gameActive) resource.classList.remove('disabled');
+    }, cooldownTime);
+  }
+
+  function updateActiveResources() {
+    // Enable all except trap if trap not active
+    resources.forEach(r => {
+      if (r.id === "trap" && !trapActive) {
+        r.classList.add('disabled');
+      } else {
+        r.classList.remove('disabled');
+      }
+    });
+  }
+
+  function startGame() {
+    if(localStorage.getItem(playedKey)) {
+      messageEl.textContent = "You have already played this challenge.";
+      return;
+    }
+    score = 0;
+    timeLeft = timeLimit;
+    scoreBoard.textContent = 'Score: 0';
+    timerEl.textContent = 'Time left: ' + timeLeft;
+    messageEl.textContent = '';
+    gameActive = true;
+    startBtn.disabled = true;
+
+    updateActiveResources();
+
+    timerId = setInterval(() => {
+      timeLeft--;
+      timerEl.textContent = 'Time left: ' + timeLeft;
+      if (timeLeft <= 0) {
+        endGame(false);
+      }
+    }, 1000);
+  }
+
+  resources.forEach(resource => {
+    resource.addEventListener('click', () => {
+      if (!gameActive || resource.classList.contains('disabled')) return;
+
+      const basePoints = parseInt(resource.getAttribute('data-points'));
+      updateScore(basePoints);
+
+      resourceCooldown(resource);
+    });
+  });
+
+  startBtn.addEventListener('click', startGame);
+</script>
+
+</body>
+</html>
