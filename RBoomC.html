@@ -7,7 +7,7 @@
     label { display: block; margin-top: 15px; }
     input, select {
       font-size: 16px; padding: 5px; margin-top: 5px;
-      width: 200px;
+      width: 220px;
     }
     button {
       margin-top: 20px;
@@ -25,6 +25,13 @@
       padding: 10px;
       word-break: break-all;
       font-size: 16px;
+    }
+    a {
+      color: #f0a500;
+      text-decoration: none;
+    }
+    a:hover {
+      text-decoration: underline;
     }
   </style>
 </head>
@@ -71,13 +78,14 @@
   const result = document.getElementById('result');
 
   // Your actual game URL (the Rust game page)
-  const gameBaseUrl = "https://loociez.github.io/Shildonia/RBoom.html";
+  const gameBaseUrl = "https://loociez.github.io/Shildonia/RBoomC.html";
 
   // Generate a random winning code if none entered
   function randomCode() {
     return "RUST-" + Math.floor(1000 + Math.random() * 9000);
   }
 
+  // Set initial winning code on page load
   document.getElementById('code').value = randomCode();
 
   form.addEventListener('submit', e => {
@@ -89,6 +97,7 @@
     const trap = document.getElementById('trap').value;
     let code = document.getElementById('code').value.trim();
 
+    // Validate winning code format
     if (!/^RUST-\d{4}$/.test(code)) {
       alert("Winning Code must be in format RUST-1234");
       return;
@@ -97,7 +106,8 @@
     // Construct URL with parameters
     const url = `${gameBaseUrl}?time=${encodeURIComponent(time)}&target=${encodeURIComponent(target)}&cooldown=${encodeURIComponent(cooldown)}&trap=${encodeURIComponent(trap)}&code=${encodeURIComponent(code)}`;
 
-    result.innerHTML = `<strong>Generated Game Link:</strong><br><a href="${url}" target="_blank">${url}</a>`;
+    // Show generated URL
+    result.innerHTML = `<strong>Generated Game Link:</strong><br><a href="${url}" target="_blank" rel="noopener noreferrer">${url}</a>`;
   });
 </script>
 
