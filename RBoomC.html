@@ -70,8 +70,8 @@
   const form = document.getElementById('configForm');
   const result = document.getElementById('result');
 
-  // Replace with your actual game URL (path to the challenge.html)
-  const gameBaseUrl = "https://yourdomain.com/challenge.html";
+  // Your actual game URL (the Rust game page)
+  const gameBaseUrl = "https://loociez.github.io/Shildonia/RBoom.html";
 
   // Generate a random winning code if none entered
   function randomCode() {
@@ -89,7 +89,6 @@
     const trap = document.getElementById('trap').value;
     let code = document.getElementById('code').value.trim();
 
-    // Validate code format
     if (!/^RUST-\d{4}$/.test(code)) {
       alert("Winning Code must be in format RUST-1234");
       return;
