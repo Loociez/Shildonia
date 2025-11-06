@@ -1,0 +1,106 @@
+<!DOCTYPE html>
+<html>
+<head>
+  <title>Rust Challenge Link Generator</title>
+  <style>
+    body { font-family: monospace; background: #222; color: #eee; padding: 20px; }
+    label { display: block; margin-top: 15px; }
+    input, select {
+      font-size: 16px; padding: 5px; margin-top: 5px;
+      width: 200px;
+    }
+    button {
+      margin-top: 20px;
+      font-size: 18px;
+      padding: 10px 20px;
+      cursor: pointer;
+      background-color: #b36b00;
+      border: none;
+      border-radius: 5px;
+      color: white;
+    }
+    #result {
+      margin-top: 20px;
+      background: #333;
+      padding: 10px;
+      word-break: break-all;
+      font-size: 16px;
+    }
+  </style>
+</head>
+<body>
+
+<h1>Rust Challenge Link Generator</h1>
+
+<form id="configForm">
+  <label>
+    Time Limit (seconds):
+    <input type="number" id="time" value="20" min="5" max="60" required>
+  </label>
+
+  <label>
+    Target Score:
+    <input type="number" id="target" value="30" min="5" max="100" required>
+  </label>
+
+  <label>
+    Cooldown (ms):
+    <input type="number" id="cooldown" value="2000" min="500" max="10000" step="100" required>
+  </label>
+
+  <label>
+    Trap Enabled:
+    <select id="trap">
+      <option value="0">No</option>
+      <option value="1" selected>Yes</option>
+    </select>
+  </label>
+
+  <label>
+    Winning Code (format: RUST-XXXX):
+    <input type="text" id="code" pattern="RUST-\d{4}" placeholder="RUST-1234" required>
+  </label>
+
+  <button type="submit">Generate Game Link</button>
+</form>
+
+<div id="result"></div>
+
+<script>
+  const form = document.getElementById('configForm');
+  const result = document.getElementById('result');
+
+  // Replace with your actual game URL (path to the challenge.html)
+  const gameBaseUrl = "https://yourdomain.com/challenge.html";
+
+  // Generate a random winning code if none entered
+  function randomCode() {
+    return "RUST-" + Math.floor(1000 + Math.random() * 9000);
+  }
+
+  document.getElementById('code').value = randomCode();
+
+  form.addEventListener('submit', e => {
+    e.preventDefault();
+
+    const time = document.getElementById('time').value;
+    const target = document.getElementById('target').value;
+    const cooldown = document.getElementById('cooldown').value;
+    const trap = document.getElementById('trap').value;
+    let code = document.getElementById('code').value.trim();
+
+    // Validate code format
+    if (!/^RUST-\d{4}$/.test(code)) {
+      alert("Winning Code must be in format RUST-1234");
+      return;
+    }
+
+    // Construct URL with parameters
+    const url = `${gameBaseUrl}?time=${encodeURIComponent(time)}&target=${encodeURIComponent(target)}&cooldown=${encodeURIComponent(cooldown)}&trap=${encodeURIComponent(trap)}&code=${encodeURIComponent(code)}`;
+
+    result.innerHTML = `<strong>Generated Game Link:</strong><br><a href="${url}" target="_blank">${url}</a>`;
+  });
+</script>
+
+</body>
+</html>
