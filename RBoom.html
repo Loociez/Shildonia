@@ -3,53 +3,54 @@
 <head>
   <title>Rust Resource Challenge</title>
   <style>
-    body { background:#2e2b22; color:#cfc9b8; font-family: monospace; text-align:center; }
-    #resources {
-      margin: 20px auto;
-      width: 550px;
-      height: 150px;
-      position: relative;
-      border: 2px solid #a37453;
-      border-radius: 10px;
-      background-color: #403729;
-      user-select: none;
-      overflow: hidden;
-    }
-    .resource {
-      position: absolute;
-      width: 100px; height: 100px;
-      background-color: #604830;
-      border: 3px solid #a37453;
-      line-height: 100px;
-      font-weight: bold;
-      cursor: pointer;
-      border-radius: 8px;
-      box-shadow: 0 0 10px #b28658;
-      transition: opacity 0.3s ease;
-      color: #cfc9b8;
-    }
-    .trap {
-      background-color: #7a2222 !important;
-      border-color: #a55353 !important;
-      color: #f0b0b0 !important;
-    }
-    #scoreboard, #timer, #message {
-      margin-top: 20px;
-      font-size: 24px;
-      min-height: 1.5em;
-    }
-    button {
-      margin-top: 20px;
-      padding: 10px 20px;
-      font-size: 18px;
-      cursor: pointer;
-      background-color: #b36b00;
-      border: none;
-      border-radius: 5px;
-      color: white;
-      user-select: none;
-    }
-  </style>
+  body { background:#2e2b22; color:#cfc9b8; font-family: monospace; text-align:center; }
+  #resources {
+    margin: 20px auto;
+    width: 700px;
+    height: 200px;
+    position: relative;
+    border: 2px solid #a37453;
+    border-radius: 10px;
+    background-color: #403729;
+    user-select: none;
+    overflow: hidden;
+  }
+  .resource {
+    position: absolute;
+    width: 100px; height: 100px;
+    background-color: #604830;
+    border: 3px solid #a37453;
+    line-height: 100px;
+    font-weight: bold;
+    cursor: pointer;
+    border-radius: 8px;
+    box-shadow: 0 0 10px #b28658;
+    transition: opacity 0.3s ease;
+    color: #cfc9b8;
+  }
+  .trap {
+    background-color: #7a2222 !important;
+    border-color: #a55353 !important;
+    color: #f0b0b0 !important;
+  }
+  #scoreboard, #timer, #message {
+    margin-top: 20px;
+    font-size: 24px;
+    min-height: 1.5em;
+  }
+  button {
+    margin-top: 20px;
+    padding: 10px 20px;
+    font-size: 18px;
+    cursor: pointer;
+    background-color: #b36b00;
+    border: none;
+    border-radius: 5px;
+    color: white;
+    user-select: none;
+  }
+</style>
+
 </head>
 <body>
 
