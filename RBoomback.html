@@ -1,0 +1,235 @@
+<!DOCTYPE html>
+<html>
+<head>
+  <title>Rust Resource Challenge</title>
+  <style>
+  body { background:#2e2b22; color:#cfc9b8; font-family: monospace; text-align:center; }
+  #resources {
+    margin: 20px auto;
+    width: 700px;
+    height: 200px;
+    position: relative;
+    border: 2px solid #a37453;
+    border-radius: 10px;
+    background-color: #403729;
+    user-select: none;
+    overflow: hidden;
+  }
+  .resource {
+    position: absolute;
+    width: 100px; height: 100px;
+    background-color: #604830;
+    border: 3px solid #a37453;
+    line-height: 100px;
+    font-weight: bold;
+    cursor: pointer;
+    border-radius: 8px;
+    box-shadow: 0 0 10px #b28658;
+    transition: opacity 0.3s ease;
+    color: #cfc9b8;
+  }
+  .trap {
+    background-color: #7a2222 !important;
+    border-color: #a55353 !important;
+    color: #f0b0b0 !important;
+  }
+  #scoreboard, #timer, #message {
+    margin-top: 20px;
+    font-size: 24px;
+    min-height: 1.5em;
+  }
+  button {
+    margin-top: 20px;
+    padding: 10px 20px;
+    font-size: 18px;
+    cursor: pointer;
+    background-color: #b36b00;
+    border: none;
+    border-radius: 5px;
+    color: white;
+    user-select: none;
+  }
+</style>
+
+</head>
+<body>
+
+<h1>Rust Resource Challenge</h1>
+<p>Gather resources and avoid hazards to reach the target score before time runs out!</p>
+
+<div id="resources"></div>
+
+<div id="scoreboard">Score: 0</div>
+<div id="timer">Time left: 20</div>
+<div id="message"></div>
+<button id="startBtn">Start Challenge</button>
+
+<script>
+  // Helper to get URL params
+  function getQueryParams() {
+    const params = {};
+    window.location.search.substring(1).split("&").forEach(pair => {
+      const [key, value] = pair.split("=");
+      if(key) params[key] = decodeURIComponent(value);
+    });
+    return params;
+  }
+
+  // Resource definitions (id, display text, points)
+  const RESOURCE_DEFS = [
+    { id: "wood", text: "Wood", points: 2 },
+    { id: "stone", text: "Stone", points: 4 },
+    { id: "scrap", text: "Scrap", points: 5 },
+    { id: "metal", text: "Metal", points: 7 },
+  ];
+
+  const TRAP_DEF = { id: "trap", text: "Radiation", points: -7 };
+
+  const resourcesContainer = document.getElementById('resources');
+  const scoreBoard = document.getElementById('scoreboard');
+  const timerEl = document.getElementById('timer');
+  const messageEl = document.getElementById('message');
+  const startBtn = document.getElementById('startBtn');
+
+  // Read challenge config from URL or defaults
+  const params = getQueryParams();
+
+  const timeLimit = parseInt(params.time) || 20;
+  const targetScore = parseInt(params.target) || 30;
+  const spawnIntervalMs = 500;  // how often to spawn new resources
+  const trapActive = params.trap === "1";
+  const winningCode = params.code || "RUST-0000";
+
+  let score = 0;
+  let timeLeft = timeLimit;
+  let timerId = null;
+  let spawnId = null;
+  let gameActive = false;
+
+  // Prevent replay for this browser/session (basic)
+  const playedKey = "rust_challenge_played_" + winningCode;
+
+  if(localStorage.getItem(playedKey)) {
+    startBtn.disabled = true;
+    messageEl.textContent = "You have already played this challenge.";
+  }
+
+  // Update the scoreboard and timer display immediately on page load
+  function initializeUI() {
+    scoreBoard.textContent = 'Score: 0';
+    timerEl.textContent = 'Time left: ' + timeLimit;
+    messageEl.textContent = '';
+  }
+
+  initializeUI();
+
+  // Spawn a resource element randomly inside container
+  function spawnResource() {
+    if (!gameActive) return;
+
+    // Decide resource type (trap included if enabled)
+    let pool = RESOURCE_DEFS.slice();
+    if (trapActive) pool.push(TRAP_DEF);
+
+    const resDef = pool[Math.floor(Math.random() * pool.length)];
+
+    // Create the element
+    const el = document.createElement('div');
+    el.classList.add('resource');
+    if (resDef.id === 'trap') el.classList.add('trap');
+    el.textContent = resDef.text;
+    el.dataset.points = resDef.points;
+
+    // Position randomly inside container
+    const containerRect = resourcesContainer.getBoundingClientRect();
+
+    // Since container is position:relative and resource is absolute,
+    // we position relative to container size:
+    // Leave a 10px padding margin on each side to avoid cut off
+    const maxX = resourcesContainer.clientWidth - 100 - 10;
+    const maxY = resourcesContainer.clientHeight - 100 - 10;
+
+    const posX = Math.floor(Math.random() * maxX) + 10;
+    const posY = Math.floor(Math.random() * maxY) + 10;
+
+    el.style.left = posX + "px";
+    el.style.top = posY + "px";
+
+    // Click handler
+    el.addEventListener('click', () => {
+      if (!gameActive) return;
+
+      const points = parseInt(el.dataset.points);
+      updateScore(points);
+
+      // Remove clicked resource with fade out effect
+      el.style.transition = "opacity 0.3s ease";
+      el.style.opacity = 0;
+      setTimeout(() => {
+        if (el.parentNode) el.parentNode.removeChild(el);
+      }, 300);
+    });
+
+    resourcesContainer.appendChild(el);
+  }
+
+  // Update score and check win condition
+  function updateScore(points) {
+    score += points;
+    if (score < 0) score = 0;
+    scoreBoard.textContent = 'Score: ' + score;
+    if (score >= targetScore) {
+      endGame(true);
+    }
+  }
+
+  // End the game and cleanup
+  function endGame(won) {
+    gameActive = false;
+    clearInterval(timerId);
+    clearInterval(spawnId);
+    // Remove all resource elements
+    resourcesContainer.innerHTML = '';
+
+    if (won) {
+      messageEl.innerHTML = "Challenge complete! Your code:<br><strong>" + winningCode + "</strong>";
+      // Mark played so they can't replay
+      localStorage.setItem(playedKey, "true");
+    } else {
+      messageEl.textContent = "Time's up! Better luck next time.";
+    }
+    startBtn.disabled = false;
+  }
+
+  // Main game start
+  function startGame() {
+    if(localStorage.getItem(playedKey)) {
+      messageEl.textContent = "You have already played this challenge.";
+      return;
+    }
+    score = 0;
+    timeLeft = timeLimit;
+    initializeUI();
+    gameActive = true;
+    startBtn.disabled = true;
+
+    // Start timer countdown
+    timerId = setInterval(() => {
+      timeLeft--;
+      timerEl.textContent = 'Time left: ' + timeLeft;
+      if (timeLeft <= 0) {
+        endGame(false);
+      }
+    }, 1000);
+
+    // Spawn resources repeatedly
+    spawnId = setInterval(() => {
+      spawnResource();
+    }, spawnIntervalMs);
+  }
+
+  startBtn.addEventListener('click', startGame);
+</script>
+
+</body>
+</html>
