@@ -63,6 +63,11 @@
     </select>
   </label>
 
+  <label>
+    Winning Code (format: RUST-XXXX):
+    <input type="text" id="code" pattern="RUST-\d{4}" placeholder="RUST-1234" required>
+  </label>
+
   <button type="submit">Generate Game Link</button>
 </form>
 
@@ -72,7 +77,21 @@
   const form = document.getElementById('configForm');
   const result = document.getElementById('result');
 
+  // Your actual game URL (the Rust game page)
   const gameBaseUrl = "https://loociez.github.io/Shildonia/RBoom.html";
+
+  // Generate a random winning code if none entered
+  function randomCode() {
+    return "RUST-" + Math.floor(1000 + Math.random() * 9000);
+  }
+
+  // Set initial winning code on page load
+  document.getElementById('code').value = randomCode();
+
+  // Simple Base64 encode function (btoa is standard)
+  function encodeCode(str) {
+    return btoa(str);
+  }
 
   form.addEventListener('submit', e => {
     e.preventDefault();
@@ -81,9 +100,21 @@
     const target = document.getElementById('target').value;
     const cooldown = document.getElementById('cooldown').value;
     const trap = document.getElementById('trap').value;
+    let code = document.getElementById('code').value.trim();
 
-    const url = `${gameBaseUrl}?time=${encodeURIComponent(time)}&target=${encodeURIComponent(target)}&cooldown=${encodeURIComponent(cooldown)}&trap=${encodeURIComponent(trap)}`;
+    // Validate winning code format (still validate for user input)
+    if (!/^RUST-\d{4}$/.test(code)) {
+      alert("Winning Code must be in format RUST-1234");
+      return;
+    }
 
+    // Encode the winning code before adding to URL
+    const encodedCode = encodeCode(code);
+
+    // Construct URL with encoded code parameter
+    const url = `${gameBaseUrl}?time=${encodeURIComponent(time)}&target=${encodeURIComponent(target)}&cooldown=${encodeURIComponent(cooldown)}&trap=${encodeURIComponent(trap)}&code=${encodeURIComponent(encodedCode)}`;
+
+    // Show generated URL
     result.innerHTML = `<strong>Generated Game Link:</strong><br><a href="${url}" target="_blank" rel="noopener noreferrer">${url}</a>`;
   });
 </script>
