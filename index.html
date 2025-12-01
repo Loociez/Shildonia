@@ -57,9 +57,9 @@
 
 <!-- Firebase SDK v9 -->
 <script type="module">
-  import { initializeApp } from "https://www.gstatic.com/firebasejs/9.24.0/firebase-app.js";
-  import { getAuth, createUserWithEmailAndPassword, signInWithEmailAndPassword, signOut, onAuthStateChanged } from "https://www.gstatic.com/firebasejs/9.24.0/firebase-auth.js";
-  import { getFirestore, collection, query, where, getDocs } from "https://www.gstatic.com/firebasejs/9.24.0/firebase-firestore.js";
+  import { initializeApp } from "https://www.gstatic.com/firebasejs/9/firebase-app.js";
+  import { getAuth, createUserWithEmailAndPassword, signInWithEmailAndPassword, signOut, onAuthStateChanged } from "https://www.gstatic.com/firebasejs/9/firebase-auth.js";
+  import { getFirestore, collection, query, where, getDocs, doc, getDoc, setDoc } from "https://www.gstatic.com/firebasejs/9/firebase-firestore.js";
 
   // Your Firebase config - replace with your own
   const firebaseConfig = {
@@ -100,9 +100,8 @@
 
     try {
       const cred = await createUserWithEmailAndPassword(auth, email, password);
-      // Add user to Firestore users collection with approval = false
       const uid = cred.user.uid;
-      await db.collection('users').doc(uid).set({
+      await setDoc(doc(db, 'users', uid), {
         username,
         email,
         isApproved: false,
@@ -161,10 +160,10 @@
     btnLogin.classList.add('hidden');
 
     // Load user doc to check approval
-    const docRef = db.collection('users').doc(user.uid);
-    const docSnap = await docRef.get();
+    const docRef = doc(db, 'users', user.uid);
+    const docSnap = await getDoc(docRef);
 
-    if (!docSnap.exists) {
+    if (!docSnap.exists()) {
       loginStatus.textContent = 'User record missing. Contact admin.';
       rconSection.classList.add('hidden');
       return;
@@ -182,8 +181,8 @@
 
     // Get RCON password from Firestore (you must manually create this doc)
     try {
-      const pwDoc = await db.collection('config').doc('rcon').get();
-      if (!pwDoc.exists) {
+      const pwDoc = await getDoc(doc(db, 'config', 'rcon'));
+      if (!pwDoc.exists()) {
         rconPasswordDiv.textContent = 'RCON password not set in Firestore.';
       } else {
         const rconData = pwDoc.data();
