@@ -1,0 +1,287 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width,initial-scale=1" />
+  <title>Rust RCON Console</title>
+  <style>
+    body { font-family: Inter, system-ui, Arial; max-width: 980px; margin: 20px auto; padding: 10px; }
+    .card { border:1px solid #ddd; padding:12px; border-radius:8px; margin-bottom:12px; }
+    label { display:block; margin-top:6px; font-weight:600; }
+    input, button, textarea, select { width:100%; padding:8px; margin-top:6px; box-sizing:border-box; }
+    #output { height:220px; font-family: monospace; white-space: pre-wrap; overflow:auto; }
+    .hidden { display:none; }
+    .muted { color:#666; font-size:0.9em; }
+    .row { display:flex; gap:10px; }
+    .row > * { flex:1; }
+    .btn { cursor:pointer; }
+  </style>
+</head>
+<body>
+  <h1>Rust RCON Console</h1>
+
+  <div id="auth-card" class="card">
+    <div id="register-area">
+      <h3>Register</h3>
+      <label>Username</label>
+      <input id="reg-username" placeholder="username" />
+      <label>Email</label>
+      <input id="reg-email" placeholder="you@example.com" />
+      <label>Password</label>
+      <input id="reg-password" type="password" />
+      <button id="btn-register" class="btn">Register</button>
+      <div class="muted">Registration creates an account but you must be <strong>approved</strong> by the master (Lambertio) before sending RCON commands.</div>
+    </div>
+
+    <hr>
+
+    <div id="login-area">
+      <h3>Login (username + password)</h3>
+      <label>Username</label>
+      <input id="login-username" />
+      <label>Password</label>
+      <input id="login-password" type="password" />
+      <div style="display:flex; gap:10px; margin-top:8px;">
+        <button id="btn-login" class="btn">Login</button>
+        <button id="btn-logout" class="btn hidden">Logout</button>
+      </div>
+      <div id="login-status" class="muted"></div>
+    </div>
+  </div>
+
+  <div id="console-card" class="card hidden">
+    <h3>RCON Console</h3>
+    <div class="muted">Only visible if your account is approved.</div>
+    <label>Command</label>
+    <input id="cmd-input" placeholder="status" />
+    <div style="display:flex; gap:10px; margin-top:8px;">
+      <button id="btn-send" class="btn">Send</button>
+      <button id="btn-clear" class="btn">Clear Output</button>
+    </div>
+    <label>Output</label>
+    <textarea id="output" readonly></textarea>
+  </div>
+
+  <div id="admin-card" class="card hidden">
+    <h3>Admin Panel (Master: Lambertio)</h3>
+    <div class="muted">Approve or deny user accounts.</div>
+    <div id="pending-list"></div>
+  </div>
+
+  <!-- Firebase SDK (v9 modular) -->
+  <script type="module">
+    // ============================
+    // Your Firebase config (inserted)
+    // ============================
+    const firebaseConfig = {
+      apiKey: "AIzaSyDXRSt2pmgqChOGJr4gr9e2Z_tZaGxBpoo",
+      authDomain: "shildonia-38aab.firebaseapp.com",
+      projectId: "shildonia-38aab",
+      storageBucket: "shildonia-38aab.firebasestorage.app",
+      messagingSenderId: "963502122644",
+      appId: "1:963502122644:web:adbd0976dab04f25f07681",
+      measurementId: "G-MQJ2D3SPTS"
+    };
+
+    // Replace this with the function base URL you get after deploying functions:
+    // e.g. const FUNCTION_BASE_URL = "https://europe-west1-shildonia-38aab.cloudfunctions.net/rconApi";
+    const FUNCTION_BASE_URL = "FUNCTION_BASE_URL_REPLACE_ME";
+
+    import { initializeApp } from "https://www.gstatic.com/firebasejs/9.24.0/firebase-app.js";
+    import { getAuth, createUserWithEmailAndPassword, signInWithEmailAndPassword, signOut, onAuthStateChanged } from "https://www.gstatic.com/firebasejs/9.24.0/firebase-auth.js";
+    import { getFirestore, collection, doc, getDoc, getDocs, setDoc, query, where, orderBy } from "https://www.gstatic.com/firebasejs/9.24.0/firebase-firestore.js";
+
+    const app = initializeApp(firebaseConfig);
+    const auth = getAuth(app);
+    const db = getFirestore(app);
+
+    // Elements
+    const regUsername = document.getElementById('reg-username');
+    const regEmail = document.getElementById('reg-email');
+    const regPassword = document.getElementById('reg-password');
+    const btnRegister = document.getElementById('btn-register');
+
+    const loginUsername = document.getElementById('login-username');
+    const loginPassword = document.getElementById('login-password');
+    const btnLogin = document.getElementById('btn-login');
+    const btnLogout = document.getElementById('btn-logout');
+    const loginStatus = document.getElementById('login-status');
+
+    const consoleCard = document.getElementById('console-card');
+    const adminCard = document.getElementById('admin-card');
+    const cmdInput = document.getElementById('cmd-input');
+    const btnSend = document.getElementById('btn-send');
+    const btnClear = document.getElementById('btn-clear');
+    const outputEl = document.getElementById('output');
+    const pendingList = document.getElementById('pending-list');
+
+    function showStatus(txt){ loginStatus.textContent = txt; }
+
+    // REGISTER
+    btnRegister.addEventListener('click', async () => {
+      const username = regUsername.value.trim();
+      const email = regEmail.value.trim();
+      const pw = regPassword.value;
+      if (!username || !email || !pw) return alert('Fill username, email and password.');
+      try {
+        const cred = await createUserWithEmailAndPassword(auth, email, pw);
+        const uid = cred.user.uid;
+        // create Firestore user doc
+        await setDoc(doc(db, 'users', uid), {
+          username,
+          email,
+          isApproved: false,
+          isMaster: false,
+          createdAt: Date.now()
+        });
+        alert('Registered. Wait for master to approve your account.');
+      } catch (err) {
+        alert('Register error: ' + err.message);
+      }
+    });
+
+    // LOGIN by username: look up the user's email by username then sign in
+    async function signInByUsername(username, password){
+      try {
+        const q = query(collection(db, 'users'), where('username', '==', username), orderBy('createdAt'));
+        const snap = await getDocs(q);
+        if (snap.empty) throw new Error('No user with that username.');
+        const docu = snap.docs[0];
+        const email = docu.data().email;
+        await signInWithEmailAndPassword(auth, email, password);
+      } catch (err) {
+        throw err;
+      }
+    }
+
+    btnLogin.addEventListener('click', async () => {
+      const u = loginUsername.value.trim();
+      const p = loginPassword.value;
+      if (!u || !p) return alert('Enter username and password.');
+      try {
+        await signInByUsername(u, p);
+      } catch (err) {
+        alert('Login failed: ' + err.message);
+      }
+    });
+
+    btnLogout.addEventListener('click', async () => {
+      await signOut(auth);
+    });
+
+    onAuthStateChanged(auth, async (user) => {
+      if (!user) {
+        btnLogout.classList.add('hidden');
+        btnLogin.classList.remove('hidden');
+        consoleCard.classList.add('hidden');
+        adminCard.classList.add('hidden');
+        showStatus('Not logged in');
+        return;
+      }
+      btnLogin.classList.add('hidden');
+      btnLogout.classList.remove('hidden');
+      showStatus('Logged in: ' + (user.email || user.uid));
+
+      const udoc = await getDoc(doc(db, 'users', user.uid));
+      if (!udoc.exists()) {
+        showStatus('User record missing. Contact admin.');
+        return;
+      }
+      const data = udoc.data();
+      const approved = !!data.isApproved;
+      const isMaster = !!data.isMaster || (data.username === 'Lambertio');
+      if (approved) {
+        consoleCard.classList.remove('hidden');
+      } else {
+        consoleCard.classList.add('hidden');
+        showStatus('Account not yet approved by master.');
+      }
+      if (isMaster) {
+        adminCard.classList.remove('hidden');
+        loadPendingUsers();
+      } else {
+        adminCard.classList.add('hidden');
+      }
+    });
+
+    async function loadPendingUsers(){
+      pendingList.innerHTML = '<div class="muted">Loading...</div>';
+      const q = query(collection(db, 'users'), where('isApproved', '==', false), orderBy('createdAt'));
+      const snap = await getDocs(q);
+      if (snap.empty) {
+        pendingList.innerHTML = '<div class="muted">No pending users.</div>';
+        return;
+      }
+      pendingList.innerHTML = '';
+      snap.docs.forEach(d => {
+        const data = d.data();
+        const uid = d.id;
+        const div = document.createElement('div');
+        div.className = 'card';
+        div.style.marginBottom = '8px';
+        div.innerHTML = `
+          <div><strong>${data.username}</strong> — ${data.email}</div>
+          <div class="muted">Created: ${new Date(data.createdAt).toLocaleString()}</div>
+          <div style="margin-top:8px; display:flex; gap:8px;">
+            <button data-uid="${uid}" class="approve-btn">Approve</button>
+            <button data-uid="${uid}" class="deny-btn">Deny</button>
+          </div>
+        `;
+        pendingList.appendChild(div);
+      });
+      pendingList.querySelectorAll('.approve-btn').forEach(btn => {
+        btn.addEventListener('click', () => adminApprove(btn.dataset.uid, true));
+      });
+      pendingList.querySelectorAll('.deny-btn').forEach(btn => {
+        btn.addEventListener('click', () => adminApprove(btn.dataset.uid, false));
+      });
+    }
+
+    // Admin approve: call cloud function
+    async function adminApprove(uid, allow){
+      try {
+        const token = await auth.currentUser.getIdToken();
+        const res = await fetch(`${FUNCTION_BASE_URL}/admin/approve`, {
+          method: 'POST',
+          headers: {
+            'Authorization': 'Bearer ' + token,
+            'Content-Type': 'application/json'
+          },
+          body: JSON.stringify({ targetUid: uid, approve: allow })
+        });
+        const j = await res.json();
+        if (!res.ok) throw new Error(j.error || JSON.stringify(j));
+        alert('Done: ' + j.message);
+        loadPendingUsers();
+      } catch (err) {
+        alert('Admin action error: ' + err.message);
+      }
+    }
+
+    // Send RCON command via Cloud Function
+    btnSend.addEventListener('click', async () => {
+      const cmd = cmdInput.value.trim();
+      if (!cmd) return alert('Enter a command.');
+      try {
+        const token = await auth.currentUser.getIdToken();
+        const res = await fetch(`${FUNCTION_BASE_URL}/exec`, {
+          method: 'POST',
+          headers: {
+            'Authorization': 'Bearer ' + token,
+            'Content-Type': 'application/json'
+          },
+          body: JSON.stringify({ command: cmd })
+        });
+        const j = await res.json();
+        if (!res.ok) throw new Error(j.error || JSON.stringify(j));
+        outputEl.value = (j.output || j.result || '') + "\n\n" + outputEl.value;
+      } catch (err) {
+        alert('Error sending command: ' + err.message);
+      }
+    });
+
+    btnClear.addEventListener('click', () => { outputEl.value = ''; });
+
+  </script>
+</body>
+</html>
