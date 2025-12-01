@@ -1,102 +1,201 @@
-<!doctype html>
+<!DOCTYPE html>
 <html lang="en">
 <head>
-  <meta charset="utf-8" />
-  <meta name="viewport" content="width=device-width,initial-scale=1" />
-  <title>Rust RCON Console</title>
-  <style>
-    body { font-family: Inter, system-ui, Arial; max-width: 980px; margin: 20px auto; padding: 10px; }
-    .card { border:1px solid #ddd; padding:12px; border-radius:8px; margin-bottom:12px; }
-    label { display:block; margin-top:6px; font-weight:600; }
-    input, button, textarea, select { width:100%; padding:8px; margin-top:6px; box-sizing:border-box; }
-    #output { height:220px; font-family: monospace; white-space: pre-wrap; overflow:auto; }
-    .hidden { display:none; }
-    .muted { color:#666; font-size:0.9em; }
-    .row { display:flex; gap:10px; }
-    .row > * { flex:1; }
-    .btn { cursor:pointer; }
-  </style>
+<meta charset="UTF-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1" />
+<title>Rust RCON Console (Password Sharing Demo)</title>
+<style>
+  body { font-family: Arial, sans-serif; max-width: 600px; margin: 30px auto; padding: 10px; }
+  label, button { display: block; margin-top: 10px; }
+  input { width: 100%; padding: 8px; margin-top: 5px; box-sizing: border-box; }
+  .hidden { display: none; }
+  #rcon-password { font-weight: bold; background: #eee; padding: 8px; margin-top: 10px; user-select: all; }
+  #login-status { margin-top: 15px; color: green; }
+</style>
 </head>
 <body>
-  <h1>Rust RCON Console</h1>
 
-  <div id="auth-card" class="card">
-    <div id="register-area">
-      <h3>Register</h3>
-      <label>Username</label>
-      <input id="reg-username" placeholder="username" />
-      <label>Email</label>
-      <input id="reg-email" placeholder="you@example.com" />
-      <label>Password</label>
-      <input id="reg-password" type="password" />
-      <button id="btn-register" class="btn">Register</button>
-      <div class="muted">Registration creates an account but you must be <strong>approved</strong> by the master (Lambertio) before sending RCON commands.</div>
-    </div>
+<h1>Rust RCON Console (Password Sharing Demo)</h1>
 
-    <hr>
+<div id="register-section">
+  <h2>Register</h2>
+  <label for="reg-username">Username</label>
+  <input type="text" id="reg-username" placeholder="Username" />
+  
+  <label for="reg-email">Email</label>
+  <input type="email" id="reg-email" placeholder="Email" />
+  
+  <label for="reg-password">Password</label>
+  <input type="password" id="reg-password" />
+  
+  <button id="btn-register">Register</button>
+  <div>Note: Your account must be approved manually in Firestore before login works.</div>
+</div>
 
-    <div id="login-area">
-      <h3>Login (username + password)</h3>
-      <label>Username</label>
-      <input id="login-username" />
-      <label>Password</label>
-      <input id="login-password" type="password" />
-      <div style="display:flex; gap:10px; margin-top:8px;">
-        <button id="btn-login" class="btn">Login</button>
-        <button id="btn-logout" class="btn hidden">Logout</button>
-      </div>
-      <div id="login-status" class="muted"></div>
-    </div>
-  </div>
+<hr />
 
-  <div id="console-card" class="card hidden">
-    <h3>RCON Console</h3>
-    <div class="muted">Only visible if your account is approved.</div>
-    <label>Command</label>
-    <input id="cmd-input" placeholder="status" />
-    <div style="display:flex; gap:10px; margin-top:8px;">
-      <button id="btn-send" class="btn">Send</button>
-      <button id="btn-clear" class="btn">Clear Output</button>
-    </div>
-    <label>Output</label>
-    <textarea id="output" readonly></textarea>
-  </div>
+<div id="login-section">
+  <h2>Login</h2>
+  <label for="login-username">Username</label>
+  <input type="text" id="login-username" placeholder="Username" />
+  
+  <label for="login-password">Password</label>
+  <input type="password" id="login-password" />
+  
+  <button id="btn-login">Login</button>
+  <button id="btn-logout" class="hidden">Logout</button>
+  <div id="login-status"></div>
+</div>
 
-  <div id="admin-card" class="card hidden">
-    <h3>Admin Panel (Master: Lambertio)</h3>
-    <div class="muted">Approve or deny user accounts.</div>
-    <div id="pending-list"></div>
-  </div>
+<hr />
 
-  <!-- Firebase COMPAT (Works on GitHub Pages) -->
-  <script src="https://www.gstatic.com/firebasejs/9.24.0/firebase-app-compat.js"></script>
-  <script src="https://www.gstatic.com/firebasejs/9.24.0/firebase-auth-compat.js"></script>
-  <script src="https://www.gstatic.com/firebasejs/9.24.0/firebase-firestore-compat.js"></script>
+<div id="rcon-section" class="hidden">
+  <h2>Your RCON Password</h2>
+  <div id="rcon-password" title="Click to copy password"></div>
+  <small>Use this password in your favorite RCON client to connect to your Rust server.</small>
+</div>
 
-  <script>
-    // ============================
-    // Firebase config
-    // ============================
-    firebase.initializeApp({
-      apiKey: "AIzaSyDXRSt2pmgqChOGJr4gr9e2Z_tZaGxBpoo",
-      authDomain: "shildonia-38aab.firebaseapp.com",
-      projectId: "shildonia-38aab",
-      storageBucket: "shildonia-38aab.firebasestorage.app",
-      messagingSenderId: "963502122644",
-      appId: "1:963502122644:web:adbd0976dab04f25f07681",
-      measurementId: "G-MQJ2D3SPTS"
-    });
+<!-- Firebase SDK v9 -->
+<script type="module">
+  import { initializeApp } from "https://www.gstatic.com/firebasejs/9.24.0/firebase-app.js";
+  import { getAuth, createUserWithEmailAndPassword, signInWithEmailAndPassword, signOut, onAuthStateChanged } from "https://www.gstatic.com/firebasejs/9.24.0/firebase-auth.js";
+  import { getFirestore, collection, query, where, getDocs } from "https://www.gstatic.com/firebasejs/9.24.0/firebase-firestore.js";
 
-    const auth = firebase.auth();
-    const db = firebase.firestore();
+  // Your Firebase config - replace with your own
+  const firebaseConfig = {
+    apiKey: "AIzaSyDXRSt2pmgqChOGJr4gr9e2Z_tZaGxBpoo",
+    authDomain: "shildonia-38aab.firebaseapp.com",
+    projectId: "shildonia-38aab",
+    storageBucket: "shildonia-38aab.firebasestorage.app",
+    messagingSenderId: "963502122644",
+    appId: "1:963502122644:web:adbd0976dab04f25f07681",
+    measurementId: "G-MQJ2D3SPTS"
+  };
 
-    // ============================
-    // YOUR EXISTING JS LOGIC GOES HERE
-    // (I will paste it for you next message)
-    // ============================
-  </script>
+  const app = initializeApp(firebaseConfig);
+  const auth = getAuth(app);
+  const db = getFirestore(app);
 
-  <script src="index.js"></script>
+  // Elements
+  const regUsername = document.getElementById('reg-username');
+  const regEmail = document.getElementById('reg-email');
+  const regPassword = document.getElementById('reg-password');
+  const btnRegister = document.getElementById('btn-register');
+
+  const loginUsername = document.getElementById('login-username');
+  const loginPassword = document.getElementById('login-password');
+  const btnLogin = document.getElementById('btn-login');
+  const btnLogout = document.getElementById('btn-logout');
+  const loginStatus = document.getElementById('login-status');
+
+  const rconSection = document.getElementById('rcon-section');
+  const rconPasswordDiv = document.getElementById('rcon-password');
+
+  // Register new user
+  btnRegister.addEventListener('click', async () => {
+    const username = regUsername.value.trim();
+    const email = regEmail.value.trim();
+    const password = regPassword.value;
+    if (!username || !email || !password) return alert('Fill all fields to register.');
+
+    try {
+      const cred = await createUserWithEmailAndPassword(auth, email, password);
+      // Add user to Firestore users collection with approval = false
+      const uid = cred.user.uid;
+      await db.collection('users').doc(uid).set({
+        username,
+        email,
+        isApproved: false,
+        isMaster: false,
+        createdAt: Date.now()
+      });
+      alert('Registered successfully. Wait for approval.');
+      regUsername.value = regEmail.value = regPassword.value = '';
+    } catch (err) {
+      alert('Registration error: ' + err.message);
+    }
+  });
+
+  // Helper: find user email by username for login
+  async function getEmailByUsername(username) {
+    const q = query(collection(db, 'users'), where('username', '==', username));
+    const snap = await getDocs(q);
+    if (snap.empty) throw new Error('No user with that username.');
+    return snap.docs[0].data().email;
+  }
+
+  // Login user
+  btnLogin.addEventListener('click', async () => {
+    const username = loginUsername.value.trim();
+    const password = loginPassword.value;
+    if (!username || !password) return alert('Fill username and password.');
+
+    try {
+      const email = await getEmailByUsername(username);
+      await signInWithEmailAndPassword(auth, email, password);
+    } catch (err) {
+      alert('Login failed: ' + err.message);
+    }
+  });
+
+  // Logout user
+  btnLogout.addEventListener('click', () => signOut(auth));
+
+  // Copy password on click
+  rconPasswordDiv.addEventListener('click', () => {
+    navigator.clipboard.writeText(rconPasswordDiv.textContent);
+    alert('Password copied to clipboard');
+  });
+
+  // Auth state change handler
+  onAuthStateChanged(auth, async (user) => {
+    if (!user) {
+      loginStatus.textContent = 'Not logged in';
+      btnLogout.classList.add('hidden');
+      btnLogin.classList.remove('hidden');
+      rconSection.classList.add('hidden');
+      return;
+    }
+
+    btnLogout.classList.remove('hidden');
+    btnLogin.classList.add('hidden');
+
+    // Load user doc to check approval
+    const docRef = db.collection('users').doc(user.uid);
+    const docSnap = await docRef.get();
+
+    if (!docSnap.exists) {
+      loginStatus.textContent = 'User record missing. Contact admin.';
+      rconSection.classList.add('hidden');
+      return;
+    }
+
+    const userData = docSnap.data();
+
+    if (!userData.isApproved) {
+      loginStatus.textContent = 'Your account is not yet approved by admin.';
+      rconSection.classList.add('hidden');
+      return;
+    }
+
+    loginStatus.textContent = `Logged in as ${userData.username}`;
+
+    // Get RCON password from Firestore (you must manually create this doc)
+    try {
+      const pwDoc = await db.collection('config').doc('rcon').get();
+      if (!pwDoc.exists) {
+        rconPasswordDiv.textContent = 'RCON password not set in Firestore.';
+      } else {
+        const rconData = pwDoc.data();
+        rconPasswordDiv.textContent = rconData.password || 'No password found.';
+      }
+      rconSection.classList.remove('hidden');
+    } catch (err) {
+      rconPasswordDiv.textContent = 'Error loading RCON password.';
+      rconSection.classList.remove('hidden');
+    }
+  });
+</script>
 
 </body>
 </html>
