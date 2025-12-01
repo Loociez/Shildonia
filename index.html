@@ -3,7 +3,7 @@
 <head>
 <meta charset="UTF-8" />
 <meta name="viewport" content="width=device-width, initial-scale=1" />
-<title>Rust RCON Console - Simple Login</title>
+<title>Rust RCON Console (Password Sharing Demo)</title>
 <style>
   body { font-family: Arial, sans-serif; max-width: 600px; margin: 30px auto; padding: 10px; }
   label, button { display: block; margin-top: 10px; }
@@ -15,12 +15,29 @@
 </head>
 <body>
 
-<h1>Rust RCON Console (Simple Login)</h1>
+<h1>Rust RCON Console (Password Sharing Demo)</h1>
+
+<div id="register-section">
+  <h2>Register</h2>
+  <label for="reg-username">Username</label>
+  <input type="text" id="reg-username" placeholder="Username" />
+  
+  <label for="reg-email">Email</label>
+  <input type="email" id="reg-email" placeholder="Email" />
+  
+  <label for="reg-password">Password</label>
+  <input type="password" id="reg-password" />
+  
+  <button id="btn-register">Register</button>
+  <div>Note: Your account must be approved manually in Firestore before login works.</div>
+</div>
+
+<hr />
 
 <div id="login-section">
   <h2>Login</h2>
-  <label for="login-email">Email</label>
-  <input type="email" id="login-email" placeholder="Email" />
+  <label for="login-username">Username</label>
+  <input type="text" id="login-username" placeholder="Username" />
   
   <label for="login-password">Password</label>
   <input type="password" id="login-password" />
@@ -38,12 +55,13 @@
   <small>Use this password in your favorite RCON client to connect to your Rust server.</small>
 </div>
 
+<!-- Firebase SDK v9 -->
 <script type="module">
-  import { initializeApp } from "https://www.gstatic.com/firebasejs/9.24.0/firebase-app.js";
-  import { getAuth, signInWithEmailAndPassword, signOut, onAuthStateChanged } from "https://www.gstatic.com/firebasejs/9.24.0/firebase-auth.js";
-  import { getFirestore, doc, getDoc } from "https://www.gstatic.com/firebasejs/9.24.0/firebase-firestore.js";
+  import { initializeApp } from "https://www.gstatic.com/firebasejs/9/firebase-app.js";
+  import { getAuth, createUserWithEmailAndPassword, signInWithEmailAndPassword, signOut, onAuthStateChanged } from "https://www.gstatic.com/firebasejs/9/firebase-auth.js";
+  import { getFirestore, collection, query, where, getDocs, doc, getDoc } from "https://www.gstatic.com/firebasejs/9/firebase-firestore.js";
 
-  // Your Firebase config - replace with your actual config
+  // Your Firebase config - replace with your own
   const firebaseConfig = {
     apiKey: "AIzaSyDXRSt2pmgqChOGJr4gr9e2Z_tZaGxBpoo",
     authDomain: "shildonia-38aab.firebaseapp.com",
@@ -59,7 +77,12 @@
   const db = getFirestore(app);
 
   // Elements
-  const loginEmail = document.getElementById('login-email');
+  const regUsername = document.getElementById('reg-username');
+  const regEmail = document.getElementById('reg-email');
+  const regPassword = document.getElementById('reg-password');
+  const btnRegister = document.getElementById('btn-register');
+
+  const loginUsername = document.getElementById('login-username');
   const loginPassword = document.getElementById('login-password');
   const btnLogin = document.getElementById('btn-login');
   const btnLogout = document.getElementById('btn-logout');
@@ -68,13 +91,47 @@
   const rconSection = document.getElementById('rcon-section');
   const rconPasswordDiv = document.getElementById('rcon-password');
 
-  // Login user
-  btnLogin.addEventListener('click', async () => {
-    const email = loginEmail.value.trim();
-    const password = loginPassword.value;
-    if (!email || !password) return alert('Fill email and password.');
+  // Register new user
+  btnRegister.addEventListener('click', async () => {
+    const username = regUsername.value.trim();
+    const email = regEmail.value.trim();
+    const password = regPassword.value;
+    if (!username || !email || !password) return alert('Fill all fields to register.');
 
     try {
+      const cred = await createUserWithEmailAndPassword(auth, email, password);
+      // Add user to Firestore users collection with approval = false
+      const uid = cred.user.uid;
+      await db.collection('users').doc(uid).set({
+        username,
+        email,
+        isApproved: false,
+        isMaster: false,
+        createdAt: Date.now()
+      });
+      alert('Registered successfully. Wait for approval.');
+      regUsername.value = regEmail.value = regPassword.value = '';
+    } catch (err) {
+      alert('Registration error: ' + err.message);
+    }
+  });
+
+  // Helper: find user email by username for login
+  async function getEmailByUsername(username) {
+    const q = query(collection(db, 'users'), where('username', '==', username));
+    const snap = await getDocs(q);
+    if (snap.empty) throw new Error('No user with that username.');
+    return snap.docs[0].data().email;
+  }
+
+  // Login user
+  btnLogin.addEventListener('click', async () => {
+    const username = loginUsername.value.trim();
+    const password = loginPassword.value;
+    if (!username || !password) return alert('Fill username and password.');
+
+    try {
+      const email = await getEmailByUsername(username);
       await signInWithEmailAndPassword(auth, email, password);
     } catch (err) {
       alert('Login failed: ' + err.message);
@@ -121,15 +178,16 @@
       return;
     }
 
-    loginStatus.textContent = `Logged in as ${userData.username || user.email}`;
+    loginStatus.textContent = `Logged in as ${userData.username}`;
 
     // Get RCON password from Firestore (you must manually create this doc)
     try {
-      const pwDoc = await getDoc(doc(db, 'config', 'rcon'));
-      if (!pwDoc.exists()) {
+      const pwDocRef = doc(db, 'config', 'rcon');
+      const pwDocSnap = await getDoc(pwDocRef);
+      if (!pwDocSnap.exists()) {
         rconPasswordDiv.textContent = 'RCON password not set in Firestore.';
       } else {
-        const rconData = pwDoc.data();
+        const rconData = pwDocSnap.data();
         rconPasswordDiv.textContent = rconData.password || 'No password found.';
       }
       rconSection.classList.remove('hidden');
