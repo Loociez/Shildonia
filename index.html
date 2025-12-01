@@ -57,9 +57,9 @@
 
 <!-- Firebase SDK v9 -->
 <script type="module">
-  import { initializeApp } from "https://www.gstatic.com/firebasejs/9/firebase-app.js";
-  import { getAuth, createUserWithEmailAndPassword, signInWithEmailAndPassword, signOut, onAuthStateChanged } from "https://www.gstatic.com/firebasejs/9/firebase-auth.js";
-  import { getFirestore, collection, query, where, getDocs, doc, getDoc, setDoc } from "https://www.gstatic.com/firebasejs/9/firebase-firestore.js";
+  import { initializeApp } from "https://www.gstatic.com/firebasejs/9.24.0/firebase-app.js";
+  import { getAuth, createUserWithEmailAndPassword, signInWithEmailAndPassword, signOut, onAuthStateChanged } from "https://www.gstatic.com/firebasejs/9.24.0/firebase-auth.js";
+  import { getFirestore, collection, query, where, getDocs, doc, getDoc } from "https://www.gstatic.com/firebasejs/9.24.0/firebase-firestore.js";
 
   // Your Firebase config - replace with your own
   const firebaseConfig = {
@@ -100,8 +100,9 @@
 
     try {
       const cred = await createUserWithEmailAndPassword(auth, email, password);
+      // Add user to Firestore users collection with approval = false
       const uid = cred.user.uid;
-      await setDoc(doc(db, 'users', uid), {
+      await db.collection('users').doc(uid).set({
         username,
         email,
         isApproved: false,
@@ -181,7 +182,8 @@
 
     // Get RCON password from Firestore (you must manually create this doc)
     try {
-      const pwDoc = await getDoc(doc(db, 'config', 'rcon'));
+      const pwDocRef = doc(db, 'config', 'rcon');
+      const pwDoc = await getDoc(pwDocRef);
       if (!pwDoc.exists()) {
         rconPasswordDiv.textContent = 'RCON password not set in Firestore.';
       } else {
