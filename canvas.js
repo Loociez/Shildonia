@@ -36,6 +36,7 @@ const exportBtn = document.getElementById("export-btn");
 const importBtn = document.getElementById("import-btn");
 const logoutBtn = document.getElementById("logout-btn");
 const publishBtn = document.getElementById("publish-btn");
+const backLobbyBtn = document.getElementById("back-lobby-btn");
 
 const chatMessages = document.getElementById("chat-messages");
 const chatText = document.getElementById("chat-text");
@@ -46,8 +47,8 @@ const importTextarea = document.getElementById("import-textarea");
 const importConfirmBtn = document.getElementById("import-confirm-btn");
 
 const PIXEL_SIZE = 10;
-const GRID_WIDTH = 192;  // 3x wider
-const GRID_HEIGHT = 128; // 2x taller
+const GRID_WIDTH = 192;  // 3x wider (64 * 3)
+const GRID_HEIGHT = 128; // 2x taller (64 * 2)
 const CANVAS_WIDTH = PIXEL_SIZE * GRID_WIDTH;
 const CANVAS_HEIGHT = PIXEL_SIZE * GRID_HEIGHT;
 
@@ -69,6 +70,7 @@ let userRedoStack = [];
 
 let sessionCreatorUid = null;
 
+// Draw the grid and pixels on canvas
 function drawGrid() {
   ctx.clearRect(0, 0, CANVAS_WIDTH, CANVAS_HEIGHT);
 
@@ -81,12 +83,14 @@ function drawGrid() {
     ctx.fillStyle = color || "#000000";
     ctx.fillRect(x * PIXEL_SIZE, y * PIXEL_SIZE, PIXEL_SIZE, PIXEL_SIZE);
 
+    // Mark pixels not drawn by current user with a small indicator
     if (owner && owner !== currentUser.uid) {
-      ctx.fillStyle = "#fff";
+      ctx.fillStyle = "rgba(255,255,255,0.3)";
       ctx.fillRect(x * PIXEL_SIZE + PIXEL_SIZE - 3, y * PIXEL_SIZE, 3, 3);
     }
   }
 
+  // Draw grid lines
   ctx.strokeStyle = "#444";
   ctx.lineWidth = 0.5;
   for (let i = 0; i <= GRID_WIDTH; i++) {
@@ -164,6 +168,11 @@ function undo() {
   if (!changes) return;
 
   changes.forEach(({ pixelId, oldColor }) => {
+    if (pixelData[pixelId]?.owner !== currentUser.uid) {
+      // skip pixels not owned by current user
+      return;
+    }
+
     if (oldColor === null) {
       delete pixelData[pixelId];
     } else {
@@ -187,6 +196,11 @@ function redo() {
   if (!changes) return;
 
   changes.forEach(({ pixelId, newColor }) => {
+    if (pixelData[pixelId]?.owner !== currentUser.uid && newColor !== null) {
+      // Only redo pixels owned by current user
+      return;
+    }
+
     if (newColor === null) {
       delete pixelData[pixelId];
     } else {
@@ -274,6 +288,24 @@ publishBtn.addEventListener("click", async () => {
   }
 });
 
+// Zoom controls
+const zoomInBtn = document.getElementById("zoom-in-btn");
+const zoomOutBtn = document.getElementById("zoom-out-btn");
+const resetZoomBtn = document.getElementById("reset-zoom-btn");
+
+zoomInBtn.addEventListener("click", () => {
+  zoomLevel = Math.min(zoomLevel + 0.25, 4);
+  drawGrid();
+});
+zoomOutBtn.addEventListener("click", () => {
+  zoomLevel = Math.max(zoomLevel - 0.25, 0.25);
+  drawGrid();
+});
+resetZoomBtn.addEventListener("click", () => {
+  zoomLevel = 1;
+  drawGrid();
+});
+
 function listenCanvasUpdates() {
   pixelsDocRef.onSnapshot((docSnap) => {
     if (docSnap.exists) {
@@ -304,45 +336,33 @@ logoutBtn.addEventListener("click", () => {
   auth.signOut();
 });
 
+backLobbyBtn.addEventListener("click", () => {
+  window.location.href = "lobby.html";
+});
+
 auth.onAuthStateChanged(async (user) => {
   if (!user) {
     alert("Not logged in");
     window.location.href = "index.html";
   } else {
     currentUser = user;
-    const userDoc = await db.collection("users").doc(user.uid).get();
-    if (userDoc.exists) {
-      const data = userDoc.data();
-      currentUsername = data.username || "Guest";
+    currentUsername = user.displayName || user.email || "Guest";
+
+    // Get session creator UID to enable publish button
+    const sessionDoc = await sessionDocRef.get();
+    if (sessionDoc.exists) {
+      sessionCreatorUid = sessionDoc.data().creatorUid;
+      if (currentUser.uid === sessionCreatorUid) {
+        publishBtn.style.display = "inline-block";
+      } else {
+        publishBtn.style.display = "none";
+      }
     }
-    await loadSession();
-    await loadCanvas();
+
     listenCanvasUpdates();
     listenChat();
   }
 });
 
-async function loadSession() {
-  const sessionDoc = await sessionDocRef.get();
-  if (sessionDoc.exists) {
-    const sessionData = sessionDoc.data();
-    sessionCreatorUid = sessionData.creatorUid || null;
-
-    if (currentUser.uid === sessionCreatorUid) {
-      publishBtn.style.display = "inline-block";
-    } else {
-      publishBtn.style.display = "none";
-    }
-  }
-}
-
-async function loadCanvas() {
-  const docSnap = await pixelsDocRef.get();
-  if (docSnap.exists) {
-    pixelData = docSnap.data() || {};
-  } else {
-    pixelData = {};
-    await pixelsDocRef.set(pixelData);
-  }
-  drawGrid();
-}
+// Initial draw
+drawGrid();
