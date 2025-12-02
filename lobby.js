@@ -1,20 +1,4 @@
 // lobby.js
-import { initializeApp } from "firebase/app";
-import {
-  getAuth,
-  signOut,
-  onAuthStateChanged,
-} from "firebase/auth";
-
-import {
-  getFirestore,
-  collection,
-  doc,
-  setDoc,
-  onSnapshot,
-  deleteDoc,
-  serverTimestamp,
-} from "firebase/firestore";
 
 const firebaseConfig = {
   apiKey: "AIzaSyDXRSt2pmgqChOGJr4gr9e2Z_tZaGxBpoo",
@@ -26,9 +10,10 @@ const firebaseConfig = {
   measurementId: "G-MQJ2D3SPTS",
 };
 
-const app = initializeApp(firebaseConfig);
-const auth = getAuth(app);
-const db = getFirestore(app);
+firebase.initializeApp(firebaseConfig);
+
+const auth = firebase.auth();
+const db = firebase.firestore();
 
 const onlineUsersList = document.getElementById("online-users");
 const logoutBtn = document.getElementById("logout-btn");
@@ -46,41 +31,42 @@ function updateOnlineUsers(users) {
   });
 }
 
-onAuthStateChanged(auth, async (user) => {
+auth.onAuthStateChanged(async (user) => {
   if (!user) {
     window.location.href = "index.html";
     return;
   }
 
   currentUser = user;
-  // Add user presence doc with lastActive timestamp
-  presenceDocRef = doc(db, "presence", user.uid);
-  await setDoc(presenceDocRef, {
+  presenceDocRef = db.collection("presence").doc(user.uid);
+  await presenceDocRef.set({
     email: user.email,
-    lastActive: serverTimestamp(),
+    lastActive: firebase.firestore.FieldValue.serverTimestamp(),
   });
 
   // Update presence timestamp every 30 seconds
-  const presenceInterval = setInterval(() => {
-    setDoc(presenceDocRef, {
+  setInterval(() => {
+    presenceDocRef.set({
       email: user.email,
-      lastActive: serverTimestamp(),
+      lastActive: firebase.firestore.FieldValue.serverTimestamp(),
     });
   }, 30000);
 
-  // Remove presence on disconnect
   window.addEventListener("beforeunload", async () => {
-    await deleteDoc(presenceDocRef);
+    try {
+      await presenceDocRef.delete();
+    } catch {}
   });
 
-  // Listen to presence updates (users active within last 1 minute)
-  const presenceCol = collection(db, "presence");
-  onSnapshot(presenceCol, (snapshot) => {
+  db.collection("presence").onSnapshot((snapshot) => {
     const now = Date.now();
     const onlineUsers = [];
     snapshot.forEach((doc) => {
       const data = doc.data();
-      if (data.lastActive && data.lastActive.seconds * 1000 > now - 60000) {
+      if (
+        data.lastActive &&
+        data.lastActive.toMillis() > now - 60000
+      ) {
         onlineUsers.push(data);
       }
     });
@@ -90,9 +76,11 @@ onAuthStateChanged(auth, async (user) => {
 
 logoutBtn.addEventListener("click", async () => {
   if (presenceDocRef) {
-    await deleteDoc(presenceDocRef);
+    try {
+      await presenceDocRef.delete();
+    } catch {}
   }
-  await signOut(auth);
+  await auth.signOut();
   window.location.href = "index.html";
 });
 

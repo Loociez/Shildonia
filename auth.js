@@ -1,11 +1,4 @@
 // auth.js
-import { initializeApp } from "firebase/app";
-import {
-  getAuth,
-  signInWithEmailAndPassword,
-  createUserWithEmailAndPassword,
-  onAuthStateChanged,
-} from "firebase/auth";
 
 const firebaseConfig = {
   apiKey: "AIzaSyDXRSt2pmgqChOGJr4gr9e2Z_tZaGxBpoo",
@@ -17,8 +10,10 @@ const firebaseConfig = {
   measurementId: "G-MQJ2D3SPTS",
 };
 
-const app = initializeApp(firebaseConfig);
-const auth = getAuth(app);
+// Initialize Firebase
+firebase.initializeApp(firebaseConfig);
+
+const auth = firebase.auth();
 
 const formTitle = document.getElementById("form-title");
 const emailInput = document.getElementById("email");
@@ -43,7 +38,7 @@ toggleAuth.addEventListener("click", () => {
   errorMsg.textContent = "";
 });
 
-submitBtn.addEventListener("click", async () => {
+submitBtn.addEventListener("click", () => {
   const email = emailInput.value.trim();
   const password = passwordInput.value;
 
@@ -52,21 +47,27 @@ submitBtn.addEventListener("click", async () => {
     return;
   }
 
-  try {
-    if (isLogin) {
-      await signInWithEmailAndPassword(auth, email, password);
-    } else {
-      await createUserWithEmailAndPassword(auth, email, password);
-    }
-    // On success, redirect to lobby
-    window.location.href = "lobby.html";
-  } catch (err) {
-    errorMsg.textContent = err.message;
+  if (isLogin) {
+    auth.signInWithEmailAndPassword(email, password)
+      .then(() => {
+        window.location.href = "lobby.html";
+      })
+      .catch((error) => {
+        errorMsg.textContent = error.message;
+      });
+  } else {
+    auth.createUserWithEmailAndPassword(email, password)
+      .then(() => {
+        window.location.href = "lobby.html";
+      })
+      .catch((error) => {
+        errorMsg.textContent = error.message;
+      });
   }
 });
 
 // Redirect to lobby if already logged in
-onAuthStateChanged(auth, (user) => {
+auth.onAuthStateChanged((user) => {
   if (user) {
     window.location.href = "lobby.html";
   }

@@ -54,6 +54,12 @@
     margin-top: 0.5rem;
   }
 </style>
+
+<!-- Firebase SDKs -->
+<script src="https://www.gstatic.com/firebasejs/9.23.0/firebase-app-compat.js"></script>
+<script src="https://www.gstatic.com/firebasejs/9.23.0/firebase-auth-compat.js"></script>
+<script src="https://www.gstatic.com/firebasejs/9.23.0/firebase-firestore-compat.js"></script>
+
 </head>
 <body>
   <div id="header">
@@ -67,6 +73,6 @@
   </div>
   <div id="info">Click a pixel to color it. Canvas size: 32x32 pixels.</div>
 
-  <script type="module" src="canvas.js"></script>
+  <script src="canvas.js"></script>
 </body>
 </html>

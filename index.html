@@ -58,6 +58,12 @@
     margin-bottom: 1rem;
   }
 </style>
+
+<!-- Firebase SDKs from CDN -->
+<script src="https://www.gstatic.com/firebasejs/9.23.0/firebase-app-compat.js"></script>
+<script src="https://www.gstatic.com/firebasejs/9.23.0/firebase-auth-compat.js"></script>
+<script src="https://www.gstatic.com/firebasejs/9.23.0/firebase-firestore-compat.js"></script>
+
 </head>
 <body>
   <div class="container">
@@ -69,6 +75,6 @@
     <div class="toggle-link" id="toggle-auth">Don't have an account? Register</div>
   </div>
 
-  <script type="module" src="auth.js"></script>
+  <script src="auth.js"></script>
 </body>
 </html>
