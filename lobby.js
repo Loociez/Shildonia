@@ -16,17 +16,9 @@ const auth = firebase.auth();
 const db = firebase.firestore();
 
 const createSessionBtn = document.getElementById("create-session-btn");
-
-// Remove join session elements, since they don't exist in your HTML
-// const joinSessionInput = document.getElementById("join-session-id");
-// const joinSessionBtn = document.getElementById("join-session-btn");
-
 const usernameInput = document.getElementById("username-input");
 const saveUsernameBtn = document.getElementById("username-save-btn");
-
-// usernameDisplay does not exist in HTML, remove or add element if needed
-// const usernameDisplay = document.getElementById("username-display");
-
+const logoutBtn = document.getElementById("logout-btn");
 const sessionsList = document.getElementById("sessions-list");
 const galleryList = document.getElementById("gallery-list");
 
@@ -44,10 +36,10 @@ async function saveUsername(username) {
     await currentUser.updateProfile({ displayName: username });
     localStorage.setItem("username", username);
     currentUsername = username;
-    // You can add a small alert or console log since usernameDisplay doesn't exist
-    console.log(`Username saved: ${currentUsername}`);
+    alert(`Username saved as "${currentUsername}"`);
   } catch (err) {
     console.error("Failed to update username:", err);
+    alert("Failed to save username.");
   }
 }
 
@@ -79,51 +71,59 @@ createSessionBtn.addEventListener("click", async () => {
   window.location.href = `canvas.html?session=${newSessionRef.id}`;
 });
 
-// Removed joinSessionBtn event listener because button doesn't exist in HTML
-
 saveUsernameBtn.addEventListener("click", () => {
   const username = usernameInput.value.trim();
   if (!username) return alert("Username cannot be empty.");
   saveUsername(username);
 });
 
+// Logout button listener
+logoutBtn.addEventListener("click", async () => {
+  try {
+    await auth.signOut();
+    window.location.href = "index.html";
+  } catch (err) {
+    console.error("Logout failed:", err);
+    alert("Logout failed, please try again.");
+  }
+});
+
 // Load published gallery
 async function loadPublishedGallery() {
   if (!galleryList) return;
-  galleryList.innerHTML = "";
+  galleryList.innerHTML = "Loading gallery...";
+
   try {
+    // We'll just order by publishedAt descending and filter in code.
     const snapshot = await db.collection("sessions")
-      .where("published", ">", "")
-      .orderBy("published")
       .orderBy("publishedAt", "desc")
       .limit(20)
       .get();
 
-    if (snapshot.empty) {
-      galleryList.textContent = "No published artworks yet.";
-      return;
-    }
+    galleryList.innerHTML = "";
+
+    let foundPublished = false;
 
     snapshot.forEach((doc) => {
       const data = doc.data();
       const published = data.published;
-      if (!published) return; // skip if no published art
+
+      if (!published) return; // Skip if not published
+
+      foundPublished = true;
 
       const item = document.createElement("div");
       item.className = "gallery-item";
 
       const title = document.createElement("div");
       title.textContent = `By: ${data.creatorUsername || "Unknown"}`;
-      title.style.fontWeight = "bold";
+      title.className = "gallery-username";
       item.appendChild(title);
 
       const previewCanvas = document.createElement("canvas");
       previewCanvas.width = 64 * 10; // 64 pixels wide * pixel size (10)
       previewCanvas.height = 64 * 10; // 64 pixels tall * pixel size (10)
-      previewCanvas.style.imageRendering = "pixelated";
-      previewCanvas.style.border = "1px solid #444";
-      previewCanvas.style.display = "block";
-      previewCanvas.style.marginTop = "0.5rem";
+      previewCanvas.className = "gallery-canvas";
       item.appendChild(previewCanvas);
 
       // Draw preview of published art on canvas
@@ -145,6 +145,10 @@ async function loadPublishedGallery() {
 
       galleryList.appendChild(item);
     });
+
+    if (!foundPublished) {
+      galleryList.textContent = "No published artworks yet.";
+    }
   } catch (err) {
     console.error("Error loading published gallery:", err);
     galleryList.textContent = "Failed to load published artworks.";
@@ -153,7 +157,6 @@ async function loadPublishedGallery() {
 
 auth.onAuthStateChanged(async (user) => {
   if (!user) {
-    // Redirect to login if not logged in
     window.location.href = "index.html";
     return;
   }
