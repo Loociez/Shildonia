@@ -16,12 +16,16 @@ const auth = firebase.auth();
 const db = firebase.firestore();
 
 const createSessionBtn = document.getElementById("create-session-btn");
-const joinSessionInput = document.getElementById("join-session-id");
-const joinSessionBtn = document.getElementById("join-session-btn");
+
+// Remove join session elements, since they don't exist in your HTML
+// const joinSessionInput = document.getElementById("join-session-id");
+// const joinSessionBtn = document.getElementById("join-session-btn");
 
 const usernameInput = document.getElementById("username-input");
-const saveUsernameBtn = document.getElementById("save-username-btn");
-const usernameDisplay = document.getElementById("username-display");
+const saveUsernameBtn = document.getElementById("username-save-btn");
+
+// usernameDisplay does not exist in HTML, remove or add element if needed
+// const usernameDisplay = document.getElementById("username-display");
 
 const sessionsList = document.getElementById("sessions-list");
 const galleryList = document.getElementById("gallery-list");
@@ -40,7 +44,8 @@ async function saveUsername(username) {
     await currentUser.updateProfile({ displayName: username });
     localStorage.setItem("username", username);
     currentUsername = username;
-    usernameDisplay.textContent = `Username: ${currentUsername}`;
+    // You can add a small alert or console log since usernameDisplay doesn't exist
+    console.log(`Username saved: ${currentUsername}`);
   } catch (err) {
     console.error("Failed to update username:", err);
   }
@@ -56,7 +61,6 @@ function loadUsername() {
   } else {
     currentUsername = generateGuestName();
   }
-  usernameDisplay.textContent = `Username: ${currentUsername}`;
   usernameInput.value = currentUsername;
 }
 
@@ -75,20 +79,13 @@ createSessionBtn.addEventListener("click", async () => {
   window.location.href = `canvas.html?session=${newSessionRef.id}`;
 });
 
-joinSessionBtn.addEventListener("click", () => {
-  const sessionId = joinSessionInput.value.trim();
-  if (!sessionId) return alert("Please enter a session ID.");
-  window.location.href = `canvas.html?session=${sessionId}`;
-});
+// Removed joinSessionBtn event listener because button doesn't exist in HTML
 
 saveUsernameBtn.addEventListener("click", () => {
   const username = usernameInput.value.trim();
   if (!username) return alert("Username cannot be empty.");
   saveUsername(username);
 });
-
-// Load active sessions to join (optional)
-// You can extend this to show available sessions if you want
 
 // Load published gallery
 async function loadPublishedGallery() {
@@ -97,6 +94,7 @@ async function loadPublishedGallery() {
   try {
     const snapshot = await db.collection("sessions")
       .where("published", ">", "")
+      .orderBy("published")
       .orderBy("publishedAt", "desc")
       .limit(20)
       .get();
@@ -113,12 +111,6 @@ async function loadPublishedGallery() {
 
       const item = document.createElement("div");
       item.className = "gallery-item";
-      item.style.border = "1px solid #555";
-      item.style.margin = "0.5rem";
-      item.style.cursor = "pointer";
-      item.style.padding = "0.25rem";
-      item.style.backgroundColor = "#222";
-      item.style.color = "#eee";
 
       const title = document.createElement("div");
       title.textContent = `By: ${data.creatorUsername || "Unknown"}`;
