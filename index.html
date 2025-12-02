@@ -19,9 +19,6 @@
 
 <div id="register-section">
   <h2>Register</h2>
-  <label for="reg-username">Username</label>
-  <input type="text" id="reg-username" placeholder="Username" />
-  
   <label for="reg-email">Email</label>
   <input type="email" id="reg-email" placeholder="Email" />
   
@@ -36,8 +33,8 @@
 
 <div id="login-section">
   <h2>Login</h2>
-  <label for="login-username">Username</label>
-  <input type="text" id="login-username" placeholder="Username" />
+  <label for="login-email">Email</label>
+  <input type="email" id="login-email" placeholder="Email" />
   
   <label for="login-password">Password</label>
   <input type="password" id="login-password" />
@@ -50,16 +47,18 @@
 <hr />
 
 <div id="rcon-section" class="hidden">
-  <h2>Your RCON Password</h2>
-  <div id="rcon-password" title="Click to copy password"></div>
-  <small>Use this password in your favorite RCON client to connect to your Rust server.</small>
+  <h2>Your RCON Info</h2>
+  <div><strong>Host:</strong> <span id="rcon-host"></span></div>
+  <div><strong>Port:</strong> <span id="rcon-port"></span></div>
+  <div><strong>Password:</strong> <span id="rcon-password" title="Click to copy password"></span></div>
+  <small>Use this info in your favorite RCON client to connect to your Rust server.</small>
 </div>
 
-<!-- Firebase SDK v9 -->
+<!-- Firebase SDK v9 with modular imports -->
 <script type="module">
-  import { initializeApp } from "https://www.gstatic.com/firebasejs/9/firebase-app.js";
-  import { getAuth, createUserWithEmailAndPassword, signInWithEmailAndPassword, signOut, onAuthStateChanged } from "https://www.gstatic.com/firebasejs/9/firebase-auth.js";
-  import { getFirestore, collection, query, where, getDocs, doc, getDoc } from "https://www.gstatic.com/firebasejs/9/firebase-firestore.js";
+  import { initializeApp } from "https://www.gstatic.com/firebasejs/9.23.0/firebase-app.js";
+  import { getAuth, createUserWithEmailAndPassword, signInWithEmailAndPassword, signOut, onAuthStateChanged } from "https://www.gstatic.com/firebasejs/9.23.0/firebase-auth.js";
+  import { getFirestore, doc, getDoc, setDoc } from "https://www.gstatic.com/firebasejs/9.23.0/firebase-firestore.js";
 
   // Your Firebase config - replace with your own
   const firebaseConfig = {
@@ -77,61 +76,54 @@
   const db = getFirestore(app);
 
   // Elements
-  const regUsername = document.getElementById('reg-username');
   const regEmail = document.getElementById('reg-email');
   const regPassword = document.getElementById('reg-password');
   const btnRegister = document.getElementById('btn-register');
 
-  const loginUsername = document.getElementById('login-username');
+  const loginEmail = document.getElementById('login-email');
   const loginPassword = document.getElementById('login-password');
   const btnLogin = document.getElementById('btn-login');
   const btnLogout = document.getElementById('btn-logout');
   const loginStatus = document.getElementById('login-status');
 
   const rconSection = document.getElementById('rcon-section');
-  const rconPasswordDiv = document.getElementById('rcon-password');
+  const rconHostSpan = document.getElementById('rcon-host');
+  const rconPortSpan = document.getElementById('rcon-port');
+  const rconPasswordSpan = document.getElementById('rcon-password');
 
   // Register new user
   btnRegister.addEventListener('click', async () => {
-    const username = regUsername.value.trim();
     const email = regEmail.value.trim();
     const password = regPassword.value;
-    if (!username || !email || !password) return alert('Fill all fields to register.');
+    if (!email || !password) return alert('Fill all fields to register.');
 
     try {
       const cred = await createUserWithEmailAndPassword(auth, email, password);
-      // Add user to Firestore users collection with approval = false
       const uid = cred.user.uid;
-      await db.collection('users').doc(uid).set({
-        username,
+
+      // Add user doc with isApproved=false
+      await setDoc(doc(db, 'users', uid), {
         email,
         isApproved: false,
         isMaster: false,
         createdAt: Date.now()
       });
+
       alert('Registered successfully. Wait for approval.');
-      regUsername.value = regEmail.value = regPassword.value = '';
+      regEmail.value = '';
+      regPassword.value = '';
     } catch (err) {
       alert('Registration error: ' + err.message);
     }
   });
 
-  // Helper: find user email by username for login
-  async function getEmailByUsername(username) {
-    const q = query(collection(db, 'users'), where('username', '==', username));
-    const snap = await getDocs(q);
-    if (snap.empty) throw new Error('No user with that username.');
-    return snap.docs[0].data().email;
-  }
-
   // Login user
   btnLogin.addEventListener('click', async () => {
-    const username = loginUsername.value.trim();
+    const email = loginEmail.value.trim();
     const password = loginPassword.value;
-    if (!username || !password) return alert('Fill username and password.');
+    if (!email || !password) return alert('Fill email and password.');
 
     try {
-      const email = await getEmailByUsername(username);
       await signInWithEmailAndPassword(auth, email, password);
     } catch (err) {
       alert('Login failed: ' + err.message);
@@ -142,12 +134,12 @@
   btnLogout.addEventListener('click', () => signOut(auth));
 
   // Copy password on click
-  rconPasswordDiv.addEventListener('click', () => {
-    navigator.clipboard.writeText(rconPasswordDiv.textContent);
+  rconPasswordSpan.addEventListener('click', () => {
+    navigator.clipboard.writeText(rconPasswordSpan.textContent);
     alert('Password copied to clipboard');
   });
 
-  // Auth state change handler
+  // Auth state handler
   onAuthStateChanged(auth, async (user) => {
     if (!user) {
       loginStatus.textContent = 'Not logged in';
@@ -161,16 +153,15 @@
     btnLogin.classList.add('hidden');
 
     // Load user doc to check approval
-    const docRef = doc(db, 'users', user.uid);
-    const docSnap = await getDoc(docRef);
+    const userDoc = await getDoc(doc(db, 'users', user.uid));
 
-    if (!docSnap.exists()) {
+    if (!userDoc.exists()) {
       loginStatus.textContent = 'User record missing. Contact admin.';
       rconSection.classList.add('hidden');
       return;
     }
 
-    const userData = docSnap.data();
+    const userData = userDoc.data();
 
     if (!userData.isApproved) {
       loginStatus.textContent = 'Your account is not yet approved by admin.';
@@ -178,21 +169,26 @@
       return;
     }
 
-    loginStatus.textContent = `Logged in as ${userData.username}`;
+    loginStatus.textContent = `Logged in as ${user.email}`;
 
-    // Get RCON password from Firestore (you must manually create this doc)
+    // Load RCON config from Firestore
     try {
-      const pwDocRef = doc(db, 'config', 'rcon');
-      const pwDocSnap = await getDoc(pwDocRef);
-      if (!pwDocSnap.exists()) {
-        rconPasswordDiv.textContent = 'RCON password not set in Firestore.';
+      const rconDoc = await getDoc(doc(db, 'config', 'rcon'));
+      if (!rconDoc.exists()) {
+        rconHostSpan.textContent = 'N/A';
+        rconPortSpan.textContent = 'N/A';
+        rconPasswordSpan.textContent = 'RCON password not set in Firestore.';
       } else {
-        const rconData = pwDocSnap.data();
-        rconPasswordDiv.textContent = rconData.password || 'No password found.';
+        const rcon = rconDoc.data();
+        rconHostSpan.textContent = rcon.host || 'N/A';
+        rconPortSpan.textContent = rcon.port || 'N/A';
+        rconPasswordSpan.textContent = rcon.password || 'No password found.';
       }
       rconSection.classList.remove('hidden');
     } catch (err) {
-      rconPasswordDiv.textContent = 'Error loading RCON password.';
+      rconHostSpan.textContent = 'Error';
+      rconPortSpan.textContent = 'Error';
+      rconPasswordSpan.textContent = 'Error loading RCON password.';
       rconSection.classList.remove('hidden');
     }
   });
