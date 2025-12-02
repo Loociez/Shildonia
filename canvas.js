@@ -35,6 +35,7 @@ const redoBtn = document.getElementById("redo-btn");
 const exportBtn = document.getElementById("export-btn");
 const importBtn = document.getElementById("import-btn");
 const logoutBtn = document.getElementById("logout-btn");
+const publishBtn = document.getElementById("publish-btn");
 
 const chatMessages = document.getElementById("chat-messages");
 const chatText = document.getElementById("chat-text");
@@ -45,8 +46,8 @@ const importTextarea = document.getElementById("import-textarea");
 const importConfirmBtn = document.getElementById("import-confirm-btn");
 
 const PIXEL_SIZE = 10;
-const GRID_WIDTH = 192;  // was 64, now 3x wider
-const GRID_HEIGHT = 128; // was 64, now 2x taller
+const GRID_WIDTH = 192;  // 3x wider
+const GRID_HEIGHT = 128; // 2x taller
 const CANVAS_WIDTH = PIXEL_SIZE * GRID_WIDTH;
 const CANVAS_HEIGHT = PIXEL_SIZE * GRID_HEIGHT;
 
@@ -54,15 +55,19 @@ canvas.width = CANVAS_WIDTH;
 canvas.height = CANVAS_HEIGHT;
 
 let pixelData = {};
-let undoStack = [];
-let redoStack = [];
 let isEraserActive = false;
 let currentUser = null;
+let currentUsername = "Guest";
 let zoomLevel = 1;
 
 const sessionDocRef = db.collection("sessions").doc(sessionId);
 const pixelsDocRef = sessionDocRef.collection("pixels").doc("data");
 const chatCollectionRef = sessionDocRef.collection("chat");
+
+let userUndoStack = [];
+let userRedoStack = [];
+
+let sessionCreatorUid = null;
 
 function drawGrid() {
   ctx.clearRect(0, 0, CANVAS_WIDTH, CANVAS_HEIGHT);
@@ -76,7 +81,6 @@ function drawGrid() {
     ctx.fillStyle = color || "#000000";
     ctx.fillRect(x * PIXEL_SIZE, y * PIXEL_SIZE, PIXEL_SIZE, PIXEL_SIZE);
 
-    // Show pixel owner indicator except for current user
     if (owner && owner !== currentUser.uid) {
       ctx.fillStyle = "#fff";
       ctx.fillRect(x * PIXEL_SIZE + PIXEL_SIZE - 3, y * PIXEL_SIZE, 3, 3);
@@ -108,93 +112,97 @@ function getMousePos(evt) {
   return { x, y };
 }
 
-function updatePixel(x, y, color) {
-  const pixelId = `${x}_${y}`;
-  const newPixel = {
-    color: color || null,
-    owner: currentUser.uid,
-    timestamp: firebase.firestore.FieldValue.serverTimestamp(),
-  };
-  pixelData[pixelId] = newPixel;
-
-  return pixelsDocRef.set(pixelData);
-}
-
-async function loadCanvas() {
-  const docSnap = await pixelsDocRef.get();
-  if (docSnap.exists) {
-    pixelData = docSnap.data() || {};
-  } else {
-    pixelData = {};
-    await pixelsDocRef.set(pixelData);
-  }
-  drawGrid();
-}
-
-function listenCanvasUpdates() {
-  pixelsDocRef.onSnapshot((docSnap) => {
-    if (docSnap.exists) {
-      pixelData = docSnap.data();
-      drawGrid();
-    }
-  });
-}
-
-// Undo/Redo
-function pushUndo(state) {
-  undoStack.push(JSON.stringify(state));
-  if (undoStack.length > 50) undoStack.shift();
-}
-
-function undo() {
-  if (undoStack.length === 0) return;
-  const lastState = undoStack.pop();
-  if (!lastState) return;
-  redoStack.push(JSON.stringify(pixelData));
-  pixelData = JSON.parse(lastState);
-  pixelsDocRef.set(pixelData);
-  drawGrid();
-}
-
-function redo() {
-  if (redoStack.length === 0) return;
-  const nextState = redoStack.pop();
-  if (!nextState) return;
-  pushUndo(pixelData);
-  pixelData = JSON.parse(nextState);
-  pixelsDocRef.set(pixelData);
-  drawGrid();
-}
-
 canvas.addEventListener("click", (evt) => {
+  if (!currentUser) return;
+
   const { x, y } = getMousePos(evt);
   if (x < 0 || x >= GRID_WIDTH || y < 0 || y >= GRID_HEIGHT) return;
 
   const brushSize = Math.min(Math.max(parseInt(brushSizeInput.value, 10), 1), 10);
 
-  pushUndo(pixelData);
+  let changes = [];
 
   for (let dx = 0; dx < brushSize; dx++) {
     for (let dy = 0; dy < brushSize; dy++) {
       const px = x + dx;
       const py = y + dy;
       if (px >= GRID_WIDTH || py >= GRID_HEIGHT) continue;
-      const color = isEraserActive ? null : colorPicker.value;
+
       const pixelId = `${px}_${py}`;
+      const oldPixel = pixelData[pixelId] || { color: null, owner: null };
+      const oldColor = oldPixel.color;
+
+      const newColor = isEraserActive ? null : colorPicker.value;
+
+      if (oldColor !== newColor) {
+        changes.push({
+          pixelId,
+          oldColor,
+          newColor,
+        });
+
+        pixelData[pixelId] = {
+          color: newColor,
+          owner: currentUser.uid,
+          timestamp: firebase.firestore.FieldValue.serverTimestamp(),
+        };
+      }
+    }
+  }
+
+  if (changes.length > 0) {
+    userUndoStack.push(changes);
+    userRedoStack.length = 0;
+    pixelsDocRef.set(pixelData);
+    drawGrid();
+  }
+});
+
+function undo() {
+  if (userUndoStack.length === 0) return;
+  const changes = userUndoStack.pop();
+  if (!changes) return;
+
+  changes.forEach(({ pixelId, oldColor }) => {
+    if (oldColor === null) {
+      delete pixelData[pixelId];
+    } else {
+      pixelData[pixelId].color = oldColor;
+      if (oldColor === null) {
+        delete pixelData[pixelId].owner;
+      } else {
+        pixelData[pixelId].owner = currentUser.uid;
+      }
+    }
+  });
+
+  userRedoStack.push(changes);
+  pixelsDocRef.set(pixelData);
+  drawGrid();
+}
+
+function redo() {
+  if (userRedoStack.length === 0) return;
+  const changes = userRedoStack.pop();
+  if (!changes) return;
+
+  changes.forEach(({ pixelId, newColor }) => {
+    if (newColor === null) {
+      delete pixelData[pixelId];
+    } else {
       pixelData[pixelId] = {
-        color: color,
+        color: newColor,
         owner: currentUser.uid,
         timestamp: firebase.firestore.FieldValue.serverTimestamp(),
       };
     }
-  }
+  });
 
+  userUndoStack.push(changes);
   pixelsDocRef.set(pixelData);
   drawGrid();
-  redoStack.length = 0;
-});
+}
 
-// Tools
 eraserBtn.addEventListener("click", () => {
   isEraserActive = !isEraserActive;
   eraserBtn.style.background = isEraserActive ? "#d32f2f" : "";
@@ -227,6 +235,8 @@ importConfirmBtn.addEventListener("click", () => {
     pixelsDocRef.set(pixelData);
     importAreaContainer.style.display = "none";
     importTextarea.value = "";
+    userUndoStack = [];
+    userRedoStack = [];
   } catch (err) {
     alert("Invalid JSON");
   }
@@ -245,6 +255,33 @@ chatSendBtn.addEventListener("click", async () => {
 
   chatText.value = "";
 });
+
+publishBtn.addEventListener("click", async () => {
+  if (currentUser.uid !== sessionCreatorUid) {
+    alert("Only the creator can publish this artwork.");
+    return;
+  }
+  try {
+    await sessionDocRef.update({
+      published: pixelData,
+      publishedAt: firebase.firestore.FieldValue.serverTimestamp(),
+      publishedBy: currentUser.uid,
+    });
+    alert("Pixel art published!");
+  } catch (err) {
+    console.error("Publish failed:", err);
+    alert("Failed to publish pixel art.");
+  }
+});
+
+function listenCanvasUpdates() {
+  pixelsDocRef.onSnapshot((docSnap) => {
+    if (docSnap.exists) {
+      pixelData = docSnap.data();
+      drawGrid();
+    }
+  });
+}
 
 function listenChat() {
   chatCollectionRef.orderBy("timestamp", "asc").onSnapshot((snapshot) => {
@@ -267,22 +304,45 @@ logoutBtn.addEventListener("click", () => {
   auth.signOut();
 });
 
-let currentUsername = "Guest";
-
 auth.onAuthStateChanged(async (user) => {
   if (!user) {
     alert("Not logged in");
     window.location.href = "index.html";
   } else {
     currentUser = user;
-    // Get username from users collection
     const userDoc = await db.collection("users").doc(user.uid).get();
     if (userDoc.exists) {
       const data = userDoc.data();
       currentUsername = data.username || "Guest";
     }
+    await loadSession();
     await loadCanvas();
     listenCanvasUpdates();
     listenChat();
   }
 });
+
+async function loadSession() {
+  const sessionDoc = await sessionDocRef.get();
+  if (sessionDoc.exists) {
+    const sessionData = sessionDoc.data();
+    sessionCreatorUid = sessionData.creatorUid || null;
+
+    if (currentUser.uid === sessionCreatorUid) {
+      publishBtn.style.display = "inline-block";
+    } else {
+      publishBtn.style.display = "none";
+    }
+  }
+}
+
+async function loadCanvas() {
+  const docSnap = await pixelsDocRef.get();
+  if (docSnap.exists) {
+    pixelData = docSnap.data() || {};
+  } else {
+    pixelData = {};
+    await pixelsDocRef.set(pixelData);
+  }
+  drawGrid();
+}
