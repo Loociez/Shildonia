@@ -29,18 +29,30 @@
   button:hover {
     background: #45a049;
   }
-  #users-list {
+  #logout-btn {
+    background: #f44336;
+  }
+  #sessions-list {
     margin-top: 1rem;
     background: #333;
     padding: 1rem;
     border-radius: 8px;
-    max-width: 400px;
+    max-width: 600px;
   }
-  #users-list h3 {
+  #sessions-list h3 {
     margin-top: 0;
   }
-  #logout-btn {
-    background: #f44336;
+  .session {
+    display: flex;
+    justify-content: space-between;
+    padding: 0.5rem 0;
+    border-bottom: 1px solid #555;
+  }
+  .session:last-child {
+    border-bottom: none;
+  }
+  #create-session-btn {
+    margin-top: 1rem;
   }
 </style>
 
@@ -56,11 +68,11 @@
     <button id="logout-btn">Logout</button>
   </div>
 
-  <button id="enter-canvas-btn">Enter Pixel Art Canvas</button>
+  <button id="create-session-btn">Start New Art Session</button>
 
-  <div id="users-list">
-    <h3>Online Users:</h3>
-    <ul id="online-users"></ul>
+  <div id="sessions-list">
+    <h3>Active Art Sessions</h3>
+    <div id="sessions-container">Loading sessions...</div>
   </div>
 
   <script src="lobby.js"></script>
