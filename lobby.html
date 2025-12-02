@@ -1,80 +1,143 @@
 <!DOCTYPE html>
 <html lang="en">
 <head>
-<meta charset="UTF-8" />
-<meta name="viewport" content="width=device-width, initial-scale=1" />
-<title>Pixel Art Collab - Lobby</title>
-<style>
-  body {
-    font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;
-    background: #222;
-    color: #eee;
-    margin: 0;
-    padding: 1rem;
-  }
-  #header {
-    display: flex;
-    justify-content: space-between;
-    align-items: center;
-  }
-  button {
-    background: #4caf50;
-    border: none;
-    color: white;
-    padding: 0.5rem 1rem;
-    font-weight: bold;
-    border-radius: 4px;
-    cursor: pointer;
-  }
-  button:hover {
-    background: #45a049;
-  }
-  #logout-btn {
-    background: #f44336;
-  }
-  #sessions-list {
-    margin-top: 1rem;
-    background: #333;
-    padding: 1rem;
-    border-radius: 8px;
-    max-width: 600px;
-  }
-  #sessions-list h3 {
-    margin-top: 0;
-  }
-  .session {
-    display: flex;
-    justify-content: space-between;
-    padding: 0.5rem 0;
-    border-bottom: 1px solid #555;
-  }
-  .session:last-child {
-    border-bottom: none;
-  }
-  #create-session-btn {
-    margin-top: 1rem;
-  }
-</style>
-
-<!-- Firebase SDKs -->
-<script src="https://www.gstatic.com/firebasejs/9.23.0/firebase-app-compat.js"></script>
-<script src="https://www.gstatic.com/firebasejs/9.23.0/firebase-auth-compat.js"></script>
-<script src="https://www.gstatic.com/firebasejs/9.23.0/firebase-firestore-compat.js"></script>
-
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <title>Pixel Art Lobby</title>
+  <style>
+    body {
+      font-family: Arial, sans-serif;
+      background: #222;
+      color: #eee;
+      margin: 0; padding: 20px;
+      display: flex; flex-direction: column; align-items: center;
+    }
+    h1 {
+      margin-bottom: 0.5em;
+    }
+    #username-container {
+      margin-bottom: 1em;
+      display: flex;
+      align-items: center;
+      gap: 10px;
+    }
+    #username-input {
+      padding: 6px 10px;
+      font-size: 1rem;
+      border-radius: 5px;
+      border: none;
+      width: 180px;
+    }
+    #save-username-btn {
+      cursor: pointer;
+      padding: 6px 12px;
+      background: #4caf50;
+      border: none;
+      border-radius: 5px;
+      color: white;
+      font-weight: bold;
+      transition: background-color 0.3s;
+    }
+    #save-username-btn:hover {
+      background: #45a049;
+    }
+    #session-list {
+      width: 400px;
+      max-height: 400px;
+      overflow-y: auto;
+      border: 1px solid #555;
+      border-radius: 5px;
+      padding: 10px;
+      margin-bottom: 20px;
+      background: #333;
+    }
+    .session-item {
+      display: flex;
+      justify-content: space-between;
+      margin-bottom: 8px;
+      padding: 6px 10px;
+      background: #444;
+      border-radius: 4px;
+      align-items: center;
+    }
+    .session-info {
+      flex: 1;
+      overflow: hidden;
+      white-space: nowrap;
+      text-overflow: ellipsis;
+      font-size: 0.9rem;
+    }
+    button.join-btn {
+      background: #2196f3;
+      border: none;
+      border-radius: 5px;
+      color: white;
+      font-weight: bold;
+      cursor: pointer;
+      padding: 6px 12px;
+      transition: background-color 0.3s;
+    }
+    button.join-btn:hover {
+      background: #1976d2;
+    }
+    #start-session-btn {
+      padding: 12px 20px;
+      background: #ff9800;
+      border: none;
+      border-radius: 5px;
+      color: white;
+      font-weight: bold;
+      cursor: pointer;
+      transition: background-color 0.3s;
+      margin-bottom: 20px;
+      width: 200px;
+    }
+    #start-session-btn:hover {
+      background: #e67e22;
+    }
+    #user-email {
+      font-size: 0.9rem;
+      color: #aaa;
+      margin-bottom: 10px;
+      user-select: none;
+    }
+    #logout-btn {
+      cursor: pointer;
+      background: #d32f2f;
+      color: white;
+      border: none;
+      border-radius: 5px;
+      padding: 8px 15px;
+      font-weight: bold;
+      transition: background-color 0.3s;
+    }
+    #logout-btn:hover {
+      background: #b71c1c;
+    }
+  </style>
 </head>
 <body>
-  <div id="header">
-    <h2>Lobby</h2>
-    <button id="logout-btn">Logout</button>
+  <h1>Pixel Art Lobby</h1>
+
+  <div id="username-container">
+    <label for="username-input">Your Username:</label>
+    <input id="username-input" type="text" maxlength="20" placeholder="Guest123" />
+    <button id="save-username-btn">Save</button>
   </div>
 
-  <button id="create-session-btn">Start New Art Session</button>
+  <button id="start-session-btn">Start New Art Session</button>
 
-  <div id="sessions-list">
-    <h3>Active Art Sessions</h3>
-    <div id="sessions-container">Loading sessions...</div>
+  <div id="session-list">
+    <!-- Active sessions will be listed here -->
   </div>
 
+  <div id="user-email"></div>
+
+  <button id="logout-btn">Logout</button>
+
+  <script src="https://www.gstatic.com/firebasejs/9.23.0/firebase-app-compat.js"></script>
+  <script src="https://www.gstatic.com/firebasejs/9.23.0/firebase-auth-compat.js"></script>
+  <script src="https://www.gstatic.com/firebasejs/9.23.0/firebase-firestore-compat.js"></script>
   <script src="lobby.js"></script>
 </body>
 </html>

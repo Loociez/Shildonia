@@ -45,11 +45,13 @@ const importTextarea = document.getElementById("import-textarea");
 const importConfirmBtn = document.getElementById("import-confirm-btn");
 
 const PIXEL_SIZE = 10;
-const GRID_SIZE = 64;
-const CANVAS_SIZE = PIXEL_SIZE * GRID_SIZE;
+const GRID_WIDTH = 192;  // was 64, now 3x wider
+const GRID_HEIGHT = 128; // was 64, now 2x taller
+const CANVAS_WIDTH = PIXEL_SIZE * GRID_WIDTH;
+const CANVAS_HEIGHT = PIXEL_SIZE * GRID_HEIGHT;
 
-canvas.width = CANVAS_SIZE;
-canvas.height = CANVAS_SIZE;
+canvas.width = CANVAS_WIDTH;
+canvas.height = CANVAS_HEIGHT;
 
 let pixelData = {};
 let undoStack = [];
@@ -63,40 +65,36 @@ const pixelsDocRef = sessionDocRef.collection("pixels").doc("data");
 const chatCollectionRef = sessionDocRef.collection("chat");
 
 function drawGrid() {
-  ctx.clearRect(0, 0, CANVAS_SIZE, CANVAS_SIZE);
+  ctx.clearRect(0, 0, CANVAS_WIDTH, CANVAS_HEIGHT);
 
-  // Apply zoom scale
   ctx.save();
   ctx.scale(zoomLevel, zoomLevel);
 
-  // Draw colored pixels
   for (const key in pixelData) {
     const { color, owner } = pixelData[key];
     const [x, y] = key.split("_").map(Number);
     ctx.fillStyle = color || "#000000";
     ctx.fillRect(x * PIXEL_SIZE, y * PIXEL_SIZE, PIXEL_SIZE, PIXEL_SIZE);
 
-    // Optional: draw pixel owner indicator (small corner dot)
+    // Show pixel owner indicator except for current user
     if (owner && owner !== currentUser.uid) {
       ctx.fillStyle = "#fff";
       ctx.fillRect(x * PIXEL_SIZE + PIXEL_SIZE - 3, y * PIXEL_SIZE, 3, 3);
     }
   }
 
-  // Draw grid lines
   ctx.strokeStyle = "#444";
   ctx.lineWidth = 0.5;
-  for (let i = 0; i <= GRID_SIZE; i++) {
-    // vertical lines
+  for (let i = 0; i <= GRID_WIDTH; i++) {
     ctx.beginPath();
     ctx.moveTo(i * PIXEL_SIZE, 0);
-    ctx.lineTo(i * PIXEL_SIZE, CANVAS_SIZE);
+    ctx.lineTo(i * PIXEL_SIZE, CANVAS_HEIGHT);
     ctx.stroke();
-
-    // horizontal lines
+  }
+  for (let i = 0; i <= GRID_HEIGHT; i++) {
     ctx.beginPath();
     ctx.moveTo(0, i * PIXEL_SIZE);
-    ctx.lineTo(CANVAS_SIZE, i * PIXEL_SIZE);
+    ctx.lineTo(CANVAS_WIDTH, i * PIXEL_SIZE);
     ctx.stroke();
   }
 
@@ -105,7 +103,6 @@ function drawGrid() {
 
 function getMousePos(evt) {
   const rect = canvas.getBoundingClientRect();
-  // Adjust for zoom level
   const x = Math.floor((evt.clientX - rect.left) / (PIXEL_SIZE * zoomLevel));
   const y = Math.floor((evt.clientY - rect.top) / (PIXEL_SIZE * zoomLevel));
   return { x, y };
@@ -143,10 +140,10 @@ function listenCanvasUpdates() {
   });
 }
 
-// Undo/Redo helpers
+// Undo/Redo
 function pushUndo(state) {
   undoStack.push(JSON.stringify(state));
-  if (undoStack.length > 50) undoStack.shift(); // limit undo size
+  if (undoStack.length > 50) undoStack.shift();
 }
 
 function undo() {
@@ -171,7 +168,7 @@ function redo() {
 
 canvas.addEventListener("click", (evt) => {
   const { x, y } = getMousePos(evt);
-  if (x < 0 || x >= GRID_SIZE || y < 0 || y >= GRID_SIZE) return;
+  if (x < 0 || x >= GRID_WIDTH || y < 0 || y >= GRID_HEIGHT) return;
 
   const brushSize = Math.min(Math.max(parseInt(brushSizeInput.value, 10), 1), 10);
 
@@ -181,7 +178,7 @@ canvas.addEventListener("click", (evt) => {
     for (let dy = 0; dy < brushSize; dy++) {
       const px = x + dx;
       const py = y + dy;
-      if (px >= GRID_SIZE || py >= GRID_SIZE) continue;
+      if (px >= GRID_WIDTH || py >= GRID_HEIGHT) continue;
       const color = isEraserActive ? null : colorPicker.value;
       const pixelId = `${px}_${py}`;
       pixelData[pixelId] = {
@@ -194,10 +191,10 @@ canvas.addEventListener("click", (evt) => {
 
   pixelsDocRef.set(pixelData);
   drawGrid();
-  redoStack.length = 0; // Clear redo stack on new change
+  redoStack.length = 0;
 });
 
-// Tools handlers
+// Tools
 eraserBtn.addEventListener("click", () => {
   isEraserActive = !isEraserActive;
   eraserBtn.style.background = isEraserActive ? "#d32f2f" : "";
@@ -220,97 +217,71 @@ exportBtn.addEventListener("click", () => {
 });
 
 importBtn.addEventListener("click", () => {
-  importAreaContainer.style.display = importAreaContainer.style.display === "none" ? "block" : "none";
+  importAreaContainer.style.display = "block";
 });
 
 importConfirmBtn.addEventListener("click", () => {
   try {
-    const importData = JSON.parse(importTextarea.value);
-    if (typeof importData !== "object") throw new Error("Invalid JSON format.");
-    pixelData = importData;
+    const importedData = JSON.parse(importTextarea.value);
+    pixelData = importedData;
     pixelsDocRef.set(pixelData);
-    drawGrid();
-    importTextarea.value = "";
     importAreaContainer.style.display = "none";
-    undoStack.length = 0;
-    redoStack.length = 0;
-    alert("Canvas imported successfully.");
+    importTextarea.value = "";
   } catch (err) {
-    alert("Failed to import canvas JSON: " + err.message);
+    alert("Invalid JSON");
   }
 });
-
-logoutBtn.addEventListener("click", () => {
-  auth.signOut().then(() => {
-    window.location.href = "index.html";
-  });
-});
-
-// Chat system
-function addChatMessage(msg) {
-  const div = document.createElement("div");
-  const time = msg.timestamp ? new Date(msg.timestamp.seconds * 1000).toLocaleTimeString() : "";
-  div.textContent = `[${time}] ${msg.senderEmail}: ${msg.text}`;
-  chatMessages.appendChild(div);
-  chatMessages.scrollTop = chatMessages.scrollHeight;
-}
 
 chatSendBtn.addEventListener("click", async () => {
   const text = chatText.value.trim();
   if (!text) return;
-  chatText.value = "";
 
   await chatCollectionRef.add({
-    senderUid: currentUser.uid,
-    senderEmail: currentUser.email,
+    uid: currentUser.uid,
+    username: currentUsername || "Guest",
     text,
     timestamp: firebase.firestore.FieldValue.serverTimestamp(),
   });
-});
 
-chatText.addEventListener("keypress", (e) => {
-  if (e.key === "Enter") {
-    chatSendBtn.click();
-  }
+  chatText.value = "";
 });
 
 function listenChat() {
-  chatCollectionRef
-    .orderBy("timestamp")
-    .limit(100)
-    .onSnapshot((snapshot) => {
-      chatMessages.innerHTML = "";
-      snapshot.forEach((doc) => {
-        addChatMessage(doc.data());
-      });
+  chatCollectionRef.orderBy("timestamp", "asc").onSnapshot((snapshot) => {
+    chatMessages.innerHTML = "";
+    snapshot.forEach((doc) => {
+      const msg = doc.data();
+      const div = document.createElement("div");
+      const timeStr = msg.timestamp
+        ? new Date(msg.timestamp.toDate()).toLocaleTimeString()
+        : "";
+
+      div.textContent = `[${timeStr}] ${msg.username || "Guest"}: ${msg.text}`;
+      chatMessages.appendChild(div);
     });
+    chatMessages.scrollTop = chatMessages.scrollHeight;
+  });
 }
 
-// Zoom controls
-const zoomInBtn = document.getElementById("zoom-in-btn");
-const zoomOutBtn = document.getElementById("zoom-out-btn");
-const resetZoomBtn = document.getElementById("reset-zoom-btn");
-
-zoomInBtn.addEventListener("click", () => {
-  zoomLevel = Math.min(zoomLevel + 0.1, 3);
-  drawGrid();
-});
-zoomOutBtn.addEventListener("click", () => {
-  zoomLevel = Math.max(zoomLevel - 0.1, 0.5);
-  drawGrid();
-});
-resetZoomBtn.addEventListener("click", () => {
-  zoomLevel = 1;
-  drawGrid();
+logoutBtn.addEventListener("click", () => {
+  auth.signOut();
 });
 
-// Initialization
-auth.onAuthStateChanged((user) => {
+let currentUsername = "Guest";
+
+auth.onAuthStateChanged(async (user) => {
   if (!user) {
+    alert("Not logged in");
     window.location.href = "index.html";
   } else {
     currentUser = user;
-    loadCanvas();
+    // Get username from users collection
+    const userDoc = await db.collection("users").doc(user.uid).get();
+    if (userDoc.exists) {
+      const data = userDoc.data();
+      currentUsername = data.username || "Guest";
+    }
+    await loadCanvas();
     listenCanvasUpdates();
     listenChat();
   }
