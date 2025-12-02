@@ -3,196 +3,72 @@
 <head>
 <meta charset="UTF-8" />
 <meta name="viewport" content="width=device-width, initial-scale=1" />
-<title>Rust RCON Console (Password Sharing Demo)</title>
+<title>Pixel Art Collab - Login/Register</title>
 <style>
-  body { font-family: Arial, sans-serif; max-width: 600px; margin: 30px auto; padding: 10px; }
-  label, button { display: block; margin-top: 10px; }
-  input { width: 100%; padding: 8px; margin-top: 5px; box-sizing: border-box; }
-  .hidden { display: none; }
-  #rcon-password { font-weight: bold; background: #eee; padding: 8px; margin-top: 10px; user-select: all; }
-  #login-status { margin-top: 15px; color: green; }
+  body {
+    font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;
+    background: #222;
+    color: #eee;
+    display: flex;
+    justify-content: center;
+    align-items: center;
+    height: 100vh;
+    margin: 0;
+  }
+  .container {
+    background: #333;
+    padding: 2rem;
+    border-radius: 8px;
+    width: 320px;
+  }
+  h2 {
+    margin-top: 0;
+    text-align: center;
+  }
+  input[type="email"], input[type="password"] {
+    width: 100%;
+    padding: 0.5rem;
+    margin: 0.6rem 0 1rem 0;
+    border: none;
+    border-radius: 4px;
+  }
+  button {
+    width: 100%;
+    padding: 0.7rem;
+    background: #4caf50;
+    border: none;
+    color: white;
+    font-weight: bold;
+    cursor: pointer;
+    border-radius: 4px;
+  }
+  button:hover {
+    background: #45a049;
+  }
+  .toggle-link {
+    text-align: center;
+    margin-top: 1rem;
+    cursor: pointer;
+    color: #4caf50;
+    text-decoration: underline;
+  }
+  .error {
+    color: #f44336;
+    text-align: center;
+    margin-bottom: 1rem;
+  }
 </style>
 </head>
 <body>
+  <div class="container">
+    <h2 id="form-title">Login</h2>
+    <div class="error" id="error-msg"></div>
+    <input type="email" id="email" placeholder="Email" required />
+    <input type="password" id="password" placeholder="Password" required />
+    <button id="submit-btn">Login</button>
+    <div class="toggle-link" id="toggle-auth">Don't have an account? Register</div>
+  </div>
 
-<h1>Rust RCON Console (Password Sharing Demo)</h1>
-
-<div id="register-section">
-  <h2>Register</h2>
-  <label for="reg-email">Email</label>
-  <input type="email" id="reg-email" placeholder="Email" />
-  
-  <label for="reg-password">Password</label>
-  <input type="password" id="reg-password" />
-  
-  <button id="btn-register">Register</button>
-  <div>Note: Your account must be approved manually in Firestore before login works.</div>
-</div>
-
-<hr />
-
-<div id="login-section">
-  <h2>Login</h2>
-  <label for="login-email">Email</label>
-  <input type="email" id="login-email" placeholder="Email" />
-  
-  <label for="login-password">Password</label>
-  <input type="password" id="login-password" />
-  
-  <button id="btn-login">Login</button>
-  <button id="btn-logout" class="hidden">Logout</button>
-  <div id="login-status"></div>
-</div>
-
-<hr />
-
-<div id="rcon-section" class="hidden">
-  <h2>Your RCON Info</h2>
-  <div><strong>Host:</strong> <span id="rcon-host"></span></div>
-  <div><strong>Port:</strong> <span id="rcon-port"></span></div>
-  <div><strong>Password:</strong> <span id="rcon-password" title="Click to copy password"></span></div>
-  <small>Use this info in your favorite RCON client to connect to your Rust server.</small>
-</div>
-
-<!-- Firebase SDK v9 with modular imports -->
-<script type="module">
-  import { initializeApp } from "https://www.gstatic.com/firebasejs/9.23.0/firebase-app.js";
-  import { getAuth, createUserWithEmailAndPassword, signInWithEmailAndPassword, signOut, onAuthStateChanged } from "https://www.gstatic.com/firebasejs/9.23.0/firebase-auth.js";
-  import { getFirestore, doc, getDoc, setDoc } from "https://www.gstatic.com/firebasejs/9.23.0/firebase-firestore.js";
-
-  // Your Firebase config - replace with your own
-  const firebaseConfig = {
-    apiKey: "AIzaSyDXRSt2pmgqChOGJr4gr9e2Z_tZaGxBpoo",
-    authDomain: "shildonia-38aab.firebaseapp.com",
-    projectId: "shildonia-38aab",
-    storageBucket: "shildonia-38aab.firebasestorage.app",
-    messagingSenderId: "963502122644",
-    appId: "1:963502122644:web:adbd0976dab04f25f07681",
-    measurementId: "G-MQJ2D3SPTS"
-  };
-
-  const app = initializeApp(firebaseConfig);
-  const auth = getAuth(app);
-  const db = getFirestore(app);
-
-  // Elements
-  const regEmail = document.getElementById('reg-email');
-  const regPassword = document.getElementById('reg-password');
-  const btnRegister = document.getElementById('btn-register');
-
-  const loginEmail = document.getElementById('login-email');
-  const loginPassword = document.getElementById('login-password');
-  const btnLogin = document.getElementById('btn-login');
-  const btnLogout = document.getElementById('btn-logout');
-  const loginStatus = document.getElementById('login-status');
-
-  const rconSection = document.getElementById('rcon-section');
-  const rconHostSpan = document.getElementById('rcon-host');
-  const rconPortSpan = document.getElementById('rcon-port');
-  const rconPasswordSpan = document.getElementById('rcon-password');
-
-  // Register new user
-  btnRegister.addEventListener('click', async () => {
-    const email = regEmail.value.trim();
-    const password = regPassword.value;
-    if (!email || !password) return alert('Fill all fields to register.');
-
-    try {
-      const cred = await createUserWithEmailAndPassword(auth, email, password);
-      const uid = cred.user.uid;
-
-      // Add user doc with isApproved=false
-      await setDoc(doc(db, 'users', uid), {
-        email,
-        isApproved: false,
-        isMaster: false,
-        createdAt: Date.now()
-      });
-
-      alert('Registered successfully. Wait for approval.');
-      regEmail.value = '';
-      regPassword.value = '';
-    } catch (err) {
-      alert('Registration error: ' + err.message);
-    }
-  });
-
-  // Login user
-  btnLogin.addEventListener('click', async () => {
-    const email = loginEmail.value.trim();
-    const password = loginPassword.value;
-    if (!email || !password) return alert('Fill email and password.');
-
-    try {
-      await signInWithEmailAndPassword(auth, email, password);
-    } catch (err) {
-      alert('Login failed: ' + err.message);
-    }
-  });
-
-  // Logout user
-  btnLogout.addEventListener('click', () => signOut(auth));
-
-  // Copy password on click
-  rconPasswordSpan.addEventListener('click', () => {
-    navigator.clipboard.writeText(rconPasswordSpan.textContent);
-    alert('Password copied to clipboard');
-  });
-
-  // Auth state handler
-  onAuthStateChanged(auth, async (user) => {
-    if (!user) {
-      loginStatus.textContent = 'Not logged in';
-      btnLogout.classList.add('hidden');
-      btnLogin.classList.remove('hidden');
-      rconSection.classList.add('hidden');
-      return;
-    }
-
-    btnLogout.classList.remove('hidden');
-    btnLogin.classList.add('hidden');
-
-    // Load user doc to check approval
-    const userDoc = await getDoc(doc(db, 'users', user.uid));
-
-    if (!userDoc.exists()) {
-      loginStatus.textContent = 'User record missing. Contact admin.';
-      rconSection.classList.add('hidden');
-      return;
-    }
-
-    const userData = userDoc.data();
-
-    if (!userData.isApproved) {
-      loginStatus.textContent = 'Your account is not yet approved by admin.';
-      rconSection.classList.add('hidden');
-      return;
-    }
-
-    loginStatus.textContent = `Logged in as ${user.email}`;
-
-    // Load RCON config from Firestore
-    try {
-      const rconDoc = await getDoc(doc(db, 'config', 'rcon'));
-      if (!rconDoc.exists()) {
-        rconHostSpan.textContent = 'N/A';
-        rconPortSpan.textContent = 'N/A';
-        rconPasswordSpan.textContent = 'RCON password not set in Firestore.';
-      } else {
-        const rcon = rconDoc.data();
-        rconHostSpan.textContent = rcon.host || 'N/A';
-        rconPortSpan.textContent = rcon.port || 'N/A';
-        rconPasswordSpan.textContent = rcon.password || 'No password found.';
-      }
-      rconSection.classList.remove('hidden');
-    } catch (err) {
-      rconHostSpan.textContent = 'Error';
-      rconPortSpan.textContent = 'Error';
-      rconPasswordSpan.textContent = 'Error loading RCON password.';
-      rconSection.classList.remove('hidden');
-    }
-  });
-</script>
-
+  <script type="module" src="auth.js"></script>
 </body>
 </html>

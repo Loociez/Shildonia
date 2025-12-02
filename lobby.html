@@ -1,0 +1,62 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1" />
+<title>Pixel Art Collab - Lobby</title>
+<style>
+  body {
+    font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;
+    background: #222;
+    color: #eee;
+    margin: 0;
+    padding: 1rem;
+  }
+  #header {
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+  }
+  button {
+    background: #4caf50;
+    border: none;
+    color: white;
+    padding: 0.5rem 1rem;
+    font-weight: bold;
+    border-radius: 4px;
+    cursor: pointer;
+  }
+  button:hover {
+    background: #45a049;
+  }
+  #users-list {
+    margin-top: 1rem;
+    background: #333;
+    padding: 1rem;
+    border-radius: 8px;
+    max-width: 400px;
+  }
+  #users-list h3 {
+    margin-top: 0;
+  }
+  #logout-btn {
+    background: #f44336;
+  }
+</style>
+</head>
+<body>
+  <div id="header">
+    <h2>Lobby</h2>
+    <button id="logout-btn">Logout</button>
+  </div>
+
+  <button id="enter-canvas-btn">Enter Pixel Art Canvas</button>
+
+  <div id="users-list">
+    <h3>Online Users:</h3>
+    <ul id="online-users"></ul>
+  </div>
+
+  <script type="module" src="lobby.js"></script>
+</body>
+</html>

@@ -1,0 +1,72 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1" />
+<title>Pixel Art Collab - Canvas</title>
+<style>
+  body {
+    margin: 0;
+    background: #111;
+    color: #eee;
+    font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;
+  }
+  #header {
+    background: #222;
+    padding: 0.5rem 1rem;
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+  }
+  button {
+    background: #f44336;
+    border: none;
+    color: white;
+    padding: 0.4rem 0.8rem;
+    font-weight: bold;
+    border-radius: 4px;
+    cursor: pointer;
+  }
+  button:hover {
+    background: #d32f2f;
+  }
+  #canvas-container {
+    display: flex;
+    justify-content: center;
+    margin-top: 1rem;
+  }
+  #pixelCanvas {
+    image-rendering: pixelated;
+    cursor: crosshair;
+    background: #222;
+    border: 2px solid #555;
+  }
+  #color-picker {
+    margin-left: 1rem;
+    height: 30px;
+    width: 30px;
+    border-radius: 4px;
+    border: 1px solid #888;
+    cursor: pointer;
+  }
+  #info {
+    text-align: center;
+    margin-top: 0.5rem;
+  }
+</style>
+</head>
+<body>
+  <div id="header">
+    <h2>Collaborative Pixel Art</h2>
+    <button id="logout-btn">Logout</button>
+  </div>
+
+  <div id="canvas-container">
+    <canvas id="pixelCanvas" width="320" height="320"></canvas>
+    <input type="color" id="color-picker" value="#ff0000" title="Pick a color" />
+  </div>
+  <div id="info">Click a pixel to color it. Canvas size: 32x32 pixels.</div>
+
+  <script type="module" src="canvas.js"></script>
+</body>
+</html>
