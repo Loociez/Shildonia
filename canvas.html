@@ -14,6 +14,22 @@
     flex-direction: column;
     height: 100vh;
   }
+  body[data-readonly="true"] #pixelCanvas {
+    cursor: default !important;
+  }
+  body[data-readonly="true"] #color-picker,
+  body[data-readonly="true"] #brush-size,
+  body[data-readonly="true"] #eraser-btn,
+  body[data-readonly="true"] #undo-btn,
+  body[data-readonly="true"] #redo-btn,
+  body[data-readonly="true"] #publish-btn,
+  body[data-readonly="true"] #export-btn,
+  body[data-readonly="true"] #import-btn,
+  body[data-readonly="true"] #import-confirm-btn,
+  body[data-readonly="true"] #import-textarea,
+  body[data-readonly="true"] #export-import {
+    display: none !important;
+  }
   #header {
     background: #222;
     padding: 0.5rem 1rem;
@@ -148,6 +164,22 @@
 <script src="https://www.gstatic.com/firebasejs/9.23.0/firebase-app-compat.js"></script>
 <script src="https://www.gstatic.com/firebasejs/9.23.0/firebase-auth-compat.js"></script>
 <script src="https://www.gstatic.com/firebasejs/9.23.0/firebase-firestore-compat.js"></script>
+
+<script>
+  // Detect readonly from URL param and set on body attribute early
+  function getQueryParam(param) {
+    const params = new URLSearchParams(window.location.search);
+    return params.get(param);
+  }
+  window.addEventListener('DOMContentLoaded', () => {
+    const readonly = getQueryParam('readonly');
+    if (readonly === 'true') {
+      document.body.dataset.readonly = 'true';
+    } else {
+      document.body.dataset.readonly = 'false';
+    }
+  });
+</script>
 
 </head>
 <body>

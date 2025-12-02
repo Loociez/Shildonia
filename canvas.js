@@ -17,6 +17,7 @@ const db = firebase.firestore();
 
 const urlParams = new URLSearchParams(window.location.search);
 const sessionId = urlParams.get("session");
+const isReadOnly = urlParams.get("readonly") === "true";
 
 if (!sessionId) {
   alert("No session ID provided.");
@@ -84,7 +85,7 @@ function drawGrid() {
     ctx.fillRect(x * PIXEL_SIZE, y * PIXEL_SIZE, PIXEL_SIZE, PIXEL_SIZE);
 
     // Mark pixels not drawn by current user with a small indicator
-    if (owner && owner !== currentUser.uid) {
+    if (owner && currentUser && owner !== currentUser.uid) {
       ctx.fillStyle = "rgba(255,255,255,0.3)";
       ctx.fillRect(x * PIXEL_SIZE + PIXEL_SIZE - 3, y * PIXEL_SIZE, 3, 3);
     }
@@ -117,6 +118,7 @@ function getMousePos(evt) {
 }
 
 canvas.addEventListener("click", (evt) => {
+  if (isReadOnly) return; // DISABLE DRAWING IN READ-ONLY
   if (!currentUser) return;
 
   const { x, y } = getMousePos(evt);
@@ -163,6 +165,7 @@ canvas.addEventListener("click", (evt) => {
 });
 
 function undo() {
+  if (isReadOnly) return; // DISABLE UNDO IN READ-ONLY
   if (userUndoStack.length === 0) return;
   const changes = userUndoStack.pop();
   if (!changes) return;
@@ -191,6 +194,7 @@ function undo() {
 }
 
 function redo() {
+  if (isReadOnly) return; // DISABLE REDO IN READ-ONLY
   if (userRedoStack.length === 0) return;
   const changes = userRedoStack.pop();
   if (!changes) return;
@@ -218,6 +222,7 @@ function redo() {
 }
 
 eraserBtn.addEventListener("click", () => {
+  if (isReadOnly) return; // DISABLE ERASER IN READ-ONLY
   isEraserActive = !isEraserActive;
   eraserBtn.style.background = isEraserActive ? "#d32f2f" : "";
 });
@@ -226,6 +231,7 @@ undoBtn.addEventListener("click", undo);
 redoBtn.addEventListener("click", redo);
 
 exportBtn.addEventListener("click", () => {
+  if (isReadOnly) return; // DISABLE EXPORT IN READ-ONLY
   const exportData = JSON.stringify(pixelData, null, 2);
   const blob = new Blob([exportData], { type: "application/json" });
   const url = URL.createObjectURL(blob);
@@ -239,10 +245,12 @@ exportBtn.addEventListener("click", () => {
 });
 
 importBtn.addEventListener("click", () => {
+  if (isReadOnly) return; // DISABLE IMPORT IN READ-ONLY
   importAreaContainer.style.display = "block";
 });
 
 importConfirmBtn.addEventListener("click", () => {
+  if (isReadOnly) return; // DISABLE IMPORT IN READ-ONLY
   try {
     const importedData = JSON.parse(importTextarea.value);
     pixelData = importedData;
@@ -271,6 +279,7 @@ chatSendBtn.addEventListener("click", async () => {
 });
 
 publishBtn.addEventListener("click", async () => {
+  if (isReadOnly) return; // DISABLE PUBLISH IN READ-ONLY
   if (currentUser.uid !== sessionCreatorUid) {
     alert("Only the creator can publish this artwork.");
     return;
@@ -288,7 +297,7 @@ publishBtn.addEventListener("click", async () => {
   }
 });
 
-// Zoom controls
+// Zoom controls - always enabled (reading only changes canvas scale, no edits)
 const zoomInBtn = document.getElementById("zoom-in-btn");
 const zoomOutBtn = document.getElementById("zoom-out-btn");
 const resetZoomBtn = document.getElementById("reset-zoom-btn");
@@ -354,11 +363,24 @@ auth.onAuthStateChanged(async (user) => {
     const sessionDoc = await sessionDocRef.get();
     if (sessionDoc.exists) {
       sessionCreatorUid = sessionDoc.data().creatorUid;
-      if (currentUser.uid === sessionCreatorUid) {
+      if (currentUser.uid === sessionCreatorUid && !isReadOnly) {
         publishBtn.style.display = "inline-block";
       } else {
         publishBtn.style.display = "none";
       }
+    }
+
+    // Hide editing UI if readonly
+    if (isReadOnly) {
+      colorPicker.style.display = "none";
+      brushSizeInput.style.display = "none";
+      eraserBtn.style.display = "none";
+      undoBtn.style.display = "none";
+      redoBtn.style.display = "none";
+      exportBtn.style.display = "none";
+      importBtn.style.display = "none";
+      importAreaContainer.style.display = "none";
+      publishBtn.style.display = "none";
     }
 
     listenCanvasUpdates();
