@@ -1,5 +1,3 @@
-// lobby.js
-
 const firebaseConfig = {
   apiKey: "AIzaSyDXRSt2pmgqChOGJr4gr9e2Z_tZaGxBpoo",
   authDomain: "shildonia-38aab.firebaseapp.com",
@@ -15,86 +13,180 @@ firebase.initializeApp(firebaseConfig);
 const auth = firebase.auth();
 const db = firebase.firestore();
 
+const displayUsername = document.getElementById("display-username");
+const logoutBtn = document.getElementById("logout-btn");
+
 const usernameInput = document.getElementById("username-input");
-const saveUsernameBtn = document.getElementById("save-username-btn");
-const usernameMessage = document.getElementById("username-message");
+const setUsernameBtn = document.getElementById("set-username-btn");
+
 const createSessionBtn = document.getElementById("create-session-btn");
-const sessionsUl = document.getElementById("sessions-ul");
+
+const sessionsList = document.getElementById("sessions-list");
+const galleryList = document.getElementById("gallery-list");
+
+const statusMsg = document.getElementById("status-msg");
 
 let currentUser = null;
-let currentUsername = localStorage.getItem("pixelArtUsername") || "";
+let currentUsername = "Guest";
 
-usernameInput.value = currentUsername;
+function setStatusMessage(msg, isError = false) {
+  statusMsg.textContent = msg;
+  statusMsg.style.color = isError ? "#f44336" : "#4caf50";
+  setTimeout(() => {
+    statusMsg.textContent = "";
+  }, 4000);
+}
 
-// Save username on button click
-saveUsernameBtn.addEventListener("click", () => {
-  const newUsername = usernameInput.value.trim();
-  if (newUsername.length === 0) {
-    alert("Please enter a valid username.");
+// Update displayed username in UI
+function updateDisplayedUsername(name) {
+  displayUsername.textContent = name || "Guest";
+  usernameInput.value = name || "";
+}
+
+// Save username (to Firebase Auth profile)
+async function saveUsername(name) {
+  if (!currentUser) return;
+
+  try {
+    await currentUser.updateProfile({
+      displayName: name,
+    });
+    currentUsername = name;
+    updateDisplayedUsername(name);
+    setStatusMessage("Username saved.");
+  } catch (err) {
+    setStatusMessage("Failed to save username.", true);
+    console.error(err);
+  }
+}
+
+// Create new art session
+async function createSession() {
+  if (!currentUser) {
+    alert("Please log in first.");
     return;
   }
-  localStorage.setItem("pixelArtUsername", newUsername);
-  currentUsername = newUsername;
-  usernameMessage.style.display = "block";
-  setTimeout(() => {
-    usernameMessage.style.display = "none";
-  }, 2000);
-});
 
-// Auth anonymous sign-in to track user in Firebase
-auth.signInAnonymously().catch(console.error);
+  try {
+    const newSession = await db.collection("sessions").add({
+      creatorUid: currentUser.uid,
+      creatorName: currentUsername || "Guest",
+      createdAt: firebase.firestore.FieldValue.serverTimestamp(),
+      published: null,
+    });
 
-auth.onAuthStateChanged(async (user) => {
-  if (user) {
-    currentUser = user;
-    loadSessions();
-  } else {
-    currentUser = null;
+    // Redirect to canvas with new session ID
+    window.location.href = `canvas.html?session=${newSession.id}`;
+  } catch (err) {
+    setStatusMessage("Failed to create session.", true);
+    console.error(err);
   }
-});
+}
 
-function loadSessions() {
+// List active sessions (not published yet)
+function loadActiveSessions() {
   db.collection("sessions")
+    .where("published", "==", null)
     .orderBy("createdAt", "desc")
-    .limit(10)
     .onSnapshot((snapshot) => {
-      sessionsUl.innerHTML = "";
+      sessionsList.innerHTML = "";
+
+      if (snapshot.empty) {
+        sessionsList.textContent = "No active art sessions currently.";
+        return;
+      }
+
       snapshot.forEach((doc) => {
-        const session = doc.data();
-        const li = document.createElement("li");
-        li.textContent = `${session.name || "Untitled"} (${session.creatorUsername || "Guest"})`;
-        li.style.cursor = "pointer";
-        li.addEventListener("click", () => {
-          joinSession(doc.id);
+        const data = doc.data();
+        const item = document.createElement("div");
+        item.className = "session-item";
+
+        const creatorName = data.creatorName || "Guest";
+        const createdAt = data.createdAt
+          ? new Date(data.createdAt.toDate()).toLocaleString()
+          : "Unknown date";
+
+        item.innerHTML = `
+          <span><strong>${creatorName}</strong> - Created on: ${createdAt}</span>
+          <button>Join</button>
+        `;
+
+        const joinBtn = item.querySelector("button");
+        joinBtn.addEventListener("click", () => {
+          window.location.href = `canvas.html?session=${doc.id}`;
         });
-        sessionsUl.appendChild(li);
+
+        sessionsList.appendChild(item);
       });
     });
 }
 
-createSessionBtn.addEventListener("click", async () => {
-  if (!currentUsername || currentUsername.trim().length === 0) {
-    alert("Please enter and save a username before creating a session.");
+// Load published pixel art gallery
+function loadGallery() {
+  db.collection("sessions")
+    .where("published", "!=", null)
+    .orderBy("publishedAt", "desc")
+    .onSnapshot((snapshot) => {
+      galleryList.innerHTML = "";
+
+      if (snapshot.empty) {
+        galleryList.textContent = "No published pixel art yet.";
+        return;
+      }
+
+      snapshot.forEach((doc) => {
+        const data = doc.data();
+        if (!data.published) return;
+
+        const item = document.createElement("div");
+        item.className = "gallery-item";
+
+        const creator = data.publishedBy || "Unknown";
+        const dateStr = data.publishedAt
+          ? new Date(data.publishedAt.toDate()).toLocaleString()
+          : "Unknown date";
+
+        item.innerHTML = `
+          <span><strong>By: ${creator}</strong> | ${dateStr}</span>
+          <button>View Art</button>
+        `;
+
+        const viewBtn = item.querySelector("button");
+        viewBtn.addEventListener("click", () => {
+          window.open(`view.html?session=${doc.id}`, "_blank");
+        });
+
+        galleryList.appendChild(item);
+      });
+    });
+}
+
+// Set initial UI state and event listeners
+auth.onAuthStateChanged((user) => {
+  if (!user) {
+    window.location.href = "index.html"; // Redirect to login if not logged in
     return;
   }
+  currentUser = user;
+  currentUsername = user.displayName || "Guest";
 
-  const newSessionRef = db.collection("sessions").doc();
-  await newSessionRef.set({
-    name: `Artwork by ${currentUsername}`,
-    creatorUid: currentUser.uid,
-    creatorUsername: currentUsername,
-    createdAt: firebase.firestore.FieldValue.serverTimestamp(),
-  });
+  updateDisplayedUsername(currentUsername);
 
-  // Redirect to canvas with session id and username
-  window.location.href = `canvas.html?session=${newSessionRef.id}&username=${encodeURIComponent(currentUsername)}`;
+  loadActiveSessions();
+  loadGallery();
 });
 
-function joinSession(sessionId) {
-  if (!currentUsername || currentUsername.trim().length === 0) {
-    alert("Please enter and save a username before joining a session.");
+logoutBtn.addEventListener("click", () => {
+  auth.signOut();
+});
+
+setUsernameBtn.addEventListener("click", () => {
+  const newName = usernameInput.value.trim();
+  if (!newName) {
+    alert("Username cannot be empty.");
     return;
   }
+  saveUsername(newName);
+});
 
-  window.location.href = `canvas.html?session=${sessionId}&username=${encodeURIComponent(currentUsername)}`;
-}
+createSessionBtn.addEventListener("click", createSession);
