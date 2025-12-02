@@ -1,3 +1,5 @@
+// lobby.js
+
 const firebaseConfig = {
   apiKey: "AIzaSyDXRSt2pmgqChOGJr4gr9e2Z_tZaGxBpoo",
   authDomain: "shildonia-38aab.firebaseapp.com",
@@ -13,101 +15,38 @@ firebase.initializeApp(firebaseConfig);
 const auth = firebase.auth();
 const db = firebase.firestore();
 
-const displayUsername = document.getElementById("display-username");
-const logoutBtn = document.getElementById("logout-btn");
-
-const usernameInput = document.getElementById("username-input");
-const setUsernameBtn = document.getElementById("set-username-btn");
-
 const createSessionBtn = document.getElementById("create-session-btn");
-
-const sessionsList = document.getElementById("sessions-list");
+const sessionList = document.getElementById("session-list");
 const galleryList = document.getElementById("gallery-list");
 
-const statusMsg = document.getElementById("status-msg");
+const usernameInput = document.getElementById("username-input");
+const usernameSaveBtn = document.getElementById("username-save-btn");
 
 let currentUser = null;
 let currentUsername = "Guest";
 
-function setStatusMessage(msg, isError = false) {
-  statusMsg.textContent = msg;
-  statusMsg.style.color = isError ? "#f44336" : "#4caf50";
-  setTimeout(() => {
-    statusMsg.textContent = "";
-  }, 4000);
-}
-
-// Update displayed username in UI
-function updateDisplayedUsername(name) {
-  displayUsername.textContent = name || "Guest";
-  usernameInput.value = name || "";
-}
-
-// Save username (to Firebase Auth profile)
-async function saveUsername(name) {
-  if (!currentUser) return;
-
-  try {
-    await currentUser.updateProfile({
-      displayName: name,
-    });
-    currentUsername = name;
-    updateDisplayedUsername(name);
-    setStatusMessage("Username saved.");
-  } catch (err) {
-    setStatusMessage("Failed to save username.", true);
-    console.error(err);
-  }
-}
-
-// Create new art session
-async function createSession() {
-  if (!currentUser) {
-    alert("Please log in first.");
-    return;
-  }
-
-  try {
-    const newSession = await db.collection("sessions").add({
-      creatorUid: currentUser.uid,
-      creatorName: currentUsername || "Guest",
-      createdAt: firebase.firestore.FieldValue.serverTimestamp(),
-      published: null,
-    });
-
-    // Redirect to canvas with new session ID
-    window.location.href = `canvas.html?session=${newSession.id}`;
-  } catch (err) {
-    setStatusMessage("Failed to create session.", true);
-    console.error(err);
-  }
-}
-
-// List active sessions (not published yet)
-function loadActiveSessions() {
+// Load sessions to join
+function loadSessions() {
   db.collection("sessions")
-    .where("published", "==", null)
     .orderBy("createdAt", "desc")
     .onSnapshot((snapshot) => {
-      sessionsList.innerHTML = "";
+      sessionList.innerHTML = "";
 
       if (snapshot.empty) {
-        sessionsList.textContent = "No active art sessions currently.";
+        sessionList.textContent = "No active sessions.";
         return;
       }
 
       snapshot.forEach((doc) => {
         const data = doc.data();
+
         const item = document.createElement("div");
         item.className = "session-item";
 
         const creatorName = data.creatorName || "Guest";
-        const createdAt = data.createdAt
-          ? new Date(data.createdAt.toDate()).toLocaleString()
-          : "Unknown date";
 
         item.innerHTML = `
-          <span><strong>${creatorName}</strong> - Created on: ${createdAt}</span>
+          <span>Created by: ${creatorName}</span>
           <button>Join</button>
         `;
 
@@ -116,7 +55,7 @@ function loadActiveSessions() {
           window.location.href = `canvas.html?session=${doc.id}`;
         });
 
-        sessionsList.appendChild(item);
+        sessionList.appendChild(item);
       });
     });
 }
@@ -124,7 +63,7 @@ function loadActiveSessions() {
 // Load published pixel art gallery
 function loadGallery() {
   db.collection("sessions")
-    .where("published", "!=", null)
+    .where("publishedAt", ">", new Date(0))
     .orderBy("publishedAt", "desc")
     .onSnapshot((snapshot) => {
       galleryList.innerHTML = "";
@@ -161,32 +100,47 @@ function loadGallery() {
     });
 }
 
-// Set initial UI state and event listeners
+createSessionBtn.addEventListener("click", async () => {
+  if (!currentUser) return alert("Please log in.");
+
+  const newSessionRef = db.collection("sessions").doc();
+  await newSessionRef.set({
+    creatorUid: currentUser.uid,
+    creatorName: currentUsername,
+    createdAt: firebase.firestore.FieldValue.serverTimestamp(),
+    published: null,
+    publishedAt: null,
+    publishedBy: null,
+  });
+
+  window.location.href = `canvas.html?session=${newSessionRef.id}`;
+});
+
+usernameSaveBtn.addEventListener("click", async () => {
+  const newName = usernameInput.value.trim();
+  if (!newName) return alert("Please enter a valid username.");
+
+  if (!currentUser) return alert("Not logged in.");
+
+  try {
+    await currentUser.updateProfile({ displayName: newName });
+    currentUsername = newName;
+    alert("Username updated!");
+  } catch (err) {
+    alert("Failed to update username: " + err.message);
+  }
+});
+
+// Auth state change listener
 auth.onAuthStateChanged((user) => {
   if (!user) {
-    window.location.href = "index.html"; // Redirect to login if not logged in
-    return;
+    window.location.href = "index.html";
+  } else {
+    currentUser = user;
+    currentUsername = user.displayName || "Guest";
+    usernameInput.value = currentUsername;
+
+    loadSessions();
+    loadGallery();
   }
-  currentUser = user;
-  currentUsername = user.displayName || "Guest";
-
-  updateDisplayedUsername(currentUsername);
-
-  loadActiveSessions();
-  loadGallery();
 });
-
-logoutBtn.addEventListener("click", () => {
-  auth.signOut();
-});
-
-setUsernameBtn.addEventListener("click", () => {
-  const newName = usernameInput.value.trim();
-  if (!newName) {
-    alert("Username cannot be empty.");
-    return;
-  }
-  saveUsername(newName);
-});
-
-createSessionBtn.addEventListener("click", createSession);

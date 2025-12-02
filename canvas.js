@@ -17,7 +17,6 @@ const db = firebase.firestore();
 
 const urlParams = new URLSearchParams(window.location.search);
 const sessionId = urlParams.get("session");
-let currentUsername = urlParams.get("username") || null;
 
 if (!sessionId) {
   alert("No session ID provided.");
@@ -59,6 +58,7 @@ canvas.height = CANVAS_HEIGHT;
 let pixelData = {};
 let isEraserActive = false;
 let currentUser = null;
+let currentUsername = "Guest";
 let zoomLevel = 1;
 
 const sessionDocRef = db.collection("sessions").doc(sessionId);
@@ -70,6 +70,7 @@ let userRedoStack = [];
 
 let sessionCreatorUid = null;
 
+// Draw the grid and pixels on canvas
 function drawGrid() {
   ctx.clearRect(0, 0, CANVAS_WIDTH, CANVAS_HEIGHT);
 
@@ -82,12 +83,14 @@ function drawGrid() {
     ctx.fillStyle = color || "#000000";
     ctx.fillRect(x * PIXEL_SIZE, y * PIXEL_SIZE, PIXEL_SIZE, PIXEL_SIZE);
 
-    if (owner && currentUser && owner !== currentUser.uid) {
+    // Mark pixels not drawn by current user with a small indicator
+    if (owner && owner !== currentUser.uid) {
       ctx.fillStyle = "rgba(255,255,255,0.3)";
       ctx.fillRect(x * PIXEL_SIZE + PIXEL_SIZE - 3, y * PIXEL_SIZE, 3, 3);
     }
   }
 
+  // Draw grid lines
   ctx.strokeStyle = "#444";
   ctx.lineWidth = 0.5;
   for (let i = 0; i <= GRID_WIDTH; i++) {
@@ -166,6 +169,7 @@ function undo() {
 
   changes.forEach(({ pixelId, oldColor }) => {
     if (pixelData[pixelId]?.owner !== currentUser.uid) {
+      // skip pixels not owned by current user
       return;
     }
 
@@ -193,6 +197,7 @@ function redo() {
 
   changes.forEach(({ pixelId, newColor }) => {
     if (pixelData[pixelId]?.owner !== currentUser.uid && newColor !== null) {
+      // Only redo pixels owned by current user
       return;
     }
 
@@ -257,7 +262,7 @@ chatSendBtn.addEventListener("click", async () => {
 
   await chatCollectionRef.add({
     uid: currentUser.uid,
-    username: currentUsername || `Guest${Math.floor(Math.random() * 10000)}`,
+    username: currentUsername || "Guest",
     text,
     timestamp: firebase.firestore.FieldValue.serverTimestamp(),
   });
@@ -274,7 +279,7 @@ publishBtn.addEventListener("click", async () => {
     await sessionDocRef.update({
       published: pixelData,
       publishedAt: firebase.firestore.FieldValue.serverTimestamp(),
-      publishedBy: currentUser.uid,
+      publishedBy: currentUsername || currentUser.email || "Guest",
     });
     alert("Pixel art published!");
   } catch (err) {
@@ -283,6 +288,7 @@ publishBtn.addEventListener("click", async () => {
   }
 });
 
+// Zoom controls
 const zoomInBtn = document.getElementById("zoom-in-btn");
 const zoomOutBtn = document.getElementById("zoom-out-btn");
 const resetZoomBtn = document.getElementById("reset-zoom-btn");
@@ -327,9 +333,7 @@ function listenChat() {
 }
 
 logoutBtn.addEventListener("click", () => {
-  auth.signOut().then(() => {
-    window.location.href = "index.html";
-  });
+  auth.signOut();
 });
 
 backLobbyBtn.addEventListener("click", () => {
@@ -341,12 +345,10 @@ auth.onAuthStateChanged(async (user) => {
     alert("Not logged in");
     window.location.href = "index.html";
   } else {
-    currentUser = user;
-
-    // Use username from URL or fallback to Guest + random number
-    if (!currentUsername) {
-      currentUsername = `Guest${Math.floor(Math.random() * 10000)}`;
-    }
+    // Force reload to get updated displayName
+    await user.reload();
+    currentUser = auth.currentUser;
+    currentUsername = currentUser.displayName || currentUser.email || "Guest";
 
     // Get session creator UID to enable publish button
     const sessionDoc = await sessionDocRef.get();
