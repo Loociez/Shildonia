@@ -1,5 +1,6 @@
 // canvas.js
 
+// Firebase config & initialization (make sure firebase-app-compat.js and others are loaded in your HTML)
 const firebaseConfig = {
   apiKey: "AIzaSyDXRSt2pmgqChOGJr4gr9e2Z_tZaGxBpoo",
   authDomain: "shildonia-38aab.firebaseapp.com",
@@ -11,20 +12,22 @@ const firebaseConfig = {
 };
 
 firebase.initializeApp(firebaseConfig);
-
-const auth = firebase.auth();
 const db = firebase.firestore();
+const auth = firebase.auth();
 
 const urlParams = new URLSearchParams(window.location.search);
 const sessionId = urlParams.get("session");
+const usernameFromURL = urlParams.get("username");
 
-if (!sessionId) {
-  alert("No session ID provided.");
-  window.location.href = "lobby.html";
-}
+let currentUsername = usernameFromURL || `Guest${Math.floor(Math.random() * 1000)}`;
+let currentUser = null;
 
+// DOM elements
 const canvas = document.getElementById("pixelCanvas");
 const ctx = canvas.getContext("2d");
+const chatMessages = document.getElementById("chat-messages");
+const chatInput = document.getElementById("chat-text");
+const chatSendBtn = document.getElementById("chat-send-btn");
 
 const colorPicker = document.getElementById("color-picker");
 const brushSizeInput = document.getElementById("brush-size");
@@ -36,333 +39,391 @@ const exportBtn = document.getElementById("export-btn");
 const importBtn = document.getElementById("import-btn");
 const logoutBtn = document.getElementById("logout-btn");
 const publishBtn = document.getElementById("publish-btn");
-const backLobbyBtn = document.getElementById("back-lobby-btn");
+const backToLobbyBtn = document.getElementById("back-to-lobby-btn");
 
-const chatMessages = document.getElementById("chat-messages");
-const chatText = document.getElementById("chat-text");
-const chatSendBtn = document.getElementById("chat-send-btn");
-
-const importAreaContainer = document.getElementById("export-import");
 const importTextarea = document.getElementById("import-textarea");
 const importConfirmBtn = document.getElementById("import-confirm-btn");
 
+// Canvas parameters
 const PIXEL_SIZE = 10;
-const GRID_WIDTH = 192;  // 3x wider (64 * 3)
-const GRID_HEIGHT = 128; // 2x taller (64 * 2)
-const CANVAS_WIDTH = PIXEL_SIZE * GRID_WIDTH;
-const CANVAS_HEIGHT = PIXEL_SIZE * GRID_HEIGHT;
+const CANVAS_WIDTH_PX = 1800;  // 1800px width
+const CANVAS_HEIGHT_PX = 1200; // 1200px height
 
-canvas.width = CANVAS_WIDTH;
-canvas.height = CANVAS_HEIGHT;
+canvas.width = CANVAS_WIDTH_PX;
+canvas.height = CANVAS_HEIGHT_PX;
 
-let pixelData = {};
-let isEraserActive = false;
-let currentUser = null;
-let currentUsername = "Guest";
-let zoomLevel = 1;
+let isDrawing = false;
+let erasing = false;
+let brushSize = parseInt(brushSizeInput.value, 10) || 1;
+let currentColor = colorPicker.value;
 
-const sessionDocRef = db.collection("sessions").doc(sessionId);
-const pixelsDocRef = sessionDocRef.collection("pixels").doc("data");
-const chatCollectionRef = sessionDocRef.collection("chat");
+let sessionDocRef = null;
 
-let userUndoStack = [];
-let userRedoStack = [];
+// Data structures
+// pixels: { "x_y": { color: "#xxxxxx", username: "Name" } }
+let pixels = {};
+// Undo/Redo stacks per user
+let undoStack = [];
+let redoStack = [];
 
+// Keep track of session creator uid for publish button permission
 let sessionCreatorUid = null;
 
-// Draw the grid and pixels on canvas
+// Helpers
+function drawPixel(x, y, color) {
+  ctx.fillStyle = color || "#222";
+  ctx.fillRect(x * PIXEL_SIZE, y * PIXEL_SIZE, PIXEL_SIZE, PIXEL_SIZE);
+}
+
+function clearCanvas() {
+  ctx.fillStyle = "#222";
+  ctx.fillRect(0, 0, canvas.width, canvas.height);
+}
+
 function drawGrid() {
-  ctx.clearRect(0, 0, CANVAS_WIDTH, CANVAS_HEIGHT);
-
-  ctx.save();
-  ctx.scale(zoomLevel, zoomLevel);
-
-  for (const key in pixelData) {
-    const { color, owner } = pixelData[key];
-    const [x, y] = key.split("_").map(Number);
-    ctx.fillStyle = color || "#000000";
-    ctx.fillRect(x * PIXEL_SIZE, y * PIXEL_SIZE, PIXEL_SIZE, PIXEL_SIZE);
-
-    // Mark pixels not drawn by current user with a small indicator
-    if (owner && owner !== currentUser.uid) {
-      ctx.fillStyle = "rgba(255,255,255,0.3)";
-      ctx.fillRect(x * PIXEL_SIZE + PIXEL_SIZE - 3, y * PIXEL_SIZE, 3, 3);
-    }
-  }
-
-  // Draw grid lines
-  ctx.strokeStyle = "#444";
-  ctx.lineWidth = 0.5;
-  for (let i = 0; i <= GRID_WIDTH; i++) {
+  ctx.strokeStyle = "#333";
+  for (let x = 0; x <= canvas.width; x += PIXEL_SIZE) {
     ctx.beginPath();
-    ctx.moveTo(i * PIXEL_SIZE, 0);
-    ctx.lineTo(i * PIXEL_SIZE, CANVAS_HEIGHT);
+    ctx.moveTo(x, 0);
+    ctx.lineTo(x, canvas.height);
     ctx.stroke();
   }
-  for (let i = 0; i <= GRID_HEIGHT; i++) {
+  for (let y = 0; y <= canvas.height; y += PIXEL_SIZE) {
     ctx.beginPath();
-    ctx.moveTo(0, i * PIXEL_SIZE);
-    ctx.lineTo(CANVAS_WIDTH, i * PIXEL_SIZE);
+    ctx.moveTo(0, y);
+    ctx.lineTo(canvas.width, y);
     ctx.stroke();
   }
-
-  ctx.restore();
 }
 
-function getMousePos(evt) {
-  const rect = canvas.getBoundingClientRect();
-  const x = Math.floor((evt.clientX - rect.left) / (PIXEL_SIZE * zoomLevel));
-  const y = Math.floor((evt.clientY - rect.top) / (PIXEL_SIZE * zoomLevel));
-  return { x, y };
-}
-
-canvas.addEventListener("click", (evt) => {
-  if (!currentUser) return;
-
-  const { x, y } = getMousePos(evt);
-  if (x < 0 || x >= GRID_WIDTH || y < 0 || y >= GRID_HEIGHT) return;
-
-  const brushSize = Math.min(Math.max(parseInt(brushSizeInput.value, 10), 1), 10);
-
-  let changes = [];
-
-  for (let dx = 0; dx < brushSize; dx++) {
-    for (let dy = 0; dy < brushSize; dy++) {
-      const px = x + dx;
-      const py = y + dy;
-      if (px >= GRID_WIDTH || py >= GRID_HEIGHT) continue;
-
-      const pixelId = `${px}_${py}`;
-      const oldPixel = pixelData[pixelId] || { color: null, owner: null };
-      const oldColor = oldPixel.color;
-
-      const newColor = isEraserActive ? null : colorPicker.value;
-
-      if (oldColor !== newColor) {
-        changes.push({
-          pixelId,
-          oldColor,
-          newColor,
-        });
-
-        pixelData[pixelId] = {
-          color: newColor,
-          owner: currentUser.uid,
-          timestamp: firebase.firestore.FieldValue.serverTimestamp(),
-        };
-      }
+function redrawCanvas() {
+  clearCanvas();
+  for (const key in pixels) {
+    const [xStr, yStr] = key.split("_");
+    const x = parseInt(xStr, 10);
+    const y = parseInt(yStr, 10);
+    const pixelData = pixels[key];
+    if (pixelData && pixelData.color) {
+      drawPixel(x, y, pixelData.color);
     }
   }
+  drawGrid();
+}
 
-  if (changes.length > 0) {
-    userUndoStack.push(changes);
-    userRedoStack.length = 0;
-    pixelsDocRef.set(pixelData);
-    drawGrid();
+// Auth and session setup
+auth.signInAnonymously().catch(console.error);
+
+auth.onAuthStateChanged(async (user) => {
+  if (!user) {
+    alert("Failed to authenticate");
+    return;
+  }
+  currentUser = user;
+
+  if (!sessionId) {
+    alert("No session ID provided.");
+    window.location.href = "lobby.html";
+    return;
+  }
+
+  sessionDocRef = db.collection("sessions").doc(sessionId);
+
+  // Check session creator uid for publish button control
+  const sessionDoc = await sessionDocRef.get();
+  if (sessionDoc.exists) {
+    sessionCreatorUid = sessionDoc.data().creatorUid;
+    if (currentUser.uid === sessionCreatorUid) {
+      publishBtn.style.display = "inline-block";
+    } else {
+      publishBtn.style.display = "none";
+    }
+  } else {
+    alert("Session does not exist.");
+    window.location.href = "lobby.html";
+    return;
+  }
+
+  listenCanvasUpdates();
+  listenChat();
+});
+
+// Canvas interaction
+
+canvas.addEventListener("mousedown", (e) => {
+  isDrawing = true;
+  handleDrawing(e);
+});
+
+canvas.addEventListener("mousemove", (e) => {
+  if (isDrawing) {
+    handleDrawing(e);
   }
 });
 
-function undo() {
-  if (userUndoStack.length === 0) return;
-  const changes = userUndoStack.pop();
-  if (!changes) return;
+canvas.addEventListener("mouseup", () => {
+  isDrawing = false;
+  // Clear redo stack on new drawing action
+  redoStack = [];
+});
 
-  changes.forEach(({ pixelId, oldColor }) => {
-    if (pixelData[pixelId]?.owner !== currentUser.uid) {
-      // skip pixels not owned by current user
-      return;
-    }
+canvas.addEventListener("mouseleave", () => {
+  isDrawing = false;
+});
 
-    if (oldColor === null) {
-      delete pixelData[pixelId];
-    } else {
-      pixelData[pixelId].color = oldColor;
-      if (oldColor === null) {
-        delete pixelData[pixelId].owner;
+function handleDrawing(event) {
+  const rect = canvas.getBoundingClientRect();
+  const x = Math.floor((event.clientX - rect.left) / PIXEL_SIZE);
+  const y = Math.floor((event.clientY - rect.top) / PIXEL_SIZE);
+
+  if (x < 0 || y < 0 || x >= canvas.width / PIXEL_SIZE || y >= canvas.height / PIXEL_SIZE) {
+    return; // Outside canvas
+  }
+
+  const key = `${x}_${y}`;
+
+  // Save current pixel state for undo
+  const previousPixel = pixels[key] ? { ...pixels[key] } : null;
+
+  // Determine new color
+  const newColor = erasing ? null : currentColor;
+
+  // If no change, do nothing
+  if (previousPixel && previousPixel.color === newColor) {
+    return;
+  }
+
+  // Update local pixels state
+  if (newColor) {
+    pixels[key] = { color: newColor, username: currentUsername };
+  } else {
+    delete pixels[key];
+  }
+
+  // Save undo action
+  undoStack.push({
+    key,
+    oldPixel: previousPixel,
+    newPixel: newColor ? { color: newColor, username: currentUsername } : null,
+  });
+
+  // Push update to Firestore
+  sessionDocRef.collection("pixels").doc(key).set(
+    newColor
+      ? { color: newColor, username: currentUsername, timestamp: firebase.firestore.FieldValue.serverTimestamp() }
+      : firebase.firestore.FieldValue.delete(),
+    { merge: true }
+  ).catch(console.error);
+
+  redrawCanvas();
+}
+
+// Undo only your own pixels
+undoBtn.addEventListener("click", () => {
+  if (undoStack.length === 0) return;
+
+  // Find last pixel changed by current user
+  for (let i = undoStack.length - 1; i >= 0; i--) {
+    const action = undoStack[i];
+    if (action.newPixel && action.newPixel.username === currentUsername) {
+      // Undo this action
+      const key = action.key;
+      const oldPixel = action.oldPixel;
+
+      if (oldPixel) {
+        pixels[key] = oldPixel;
+        // Update Firestore
+        sessionDocRef.collection("pixels").doc(key).set({
+          color: oldPixel.color,
+          username: oldPixel.username,
+          timestamp: firebase.firestore.FieldValue.serverTimestamp(),
+        });
       } else {
-        pixelData[pixelId].owner = currentUser.uid;
+        delete pixels[key];
+        // Update Firestore - delete pixel
+        sessionDocRef.collection("pixels").doc(key).delete();
       }
+
+      redoStack.push(action);
+      undoStack.splice(i, 1);
+      redrawCanvas();
+      break;
     }
-  });
+  }
+});
 
-  userRedoStack.push(changes);
-  pixelsDocRef.set(pixelData);
-  drawGrid();
-}
+// Redo your own pixels
+redoBtn.addEventListener("click", () => {
+  if (redoStack.length === 0) return;
 
-function redo() {
-  if (userRedoStack.length === 0) return;
-  const changes = userRedoStack.pop();
-  if (!changes) return;
+  // Find next redo action for current user
+  for (let i = redoStack.length - 1; i >= 0; i--) {
+    const action = redoStack[i];
+    if (action.newPixel && action.newPixel.username === currentUsername) {
+      const key = action.key;
+      const newPixel = action.newPixel;
 
-  changes.forEach(({ pixelId, newColor }) => {
-    if (pixelData[pixelId]?.owner !== currentUser.uid && newColor !== null) {
-      // Only redo pixels owned by current user
-      return;
-    }
-
-    if (newColor === null) {
-      delete pixelData[pixelId];
-    } else {
-      pixelData[pixelId] = {
-        color: newColor,
-        owner: currentUser.uid,
+      pixels[key] = newPixel;
+      sessionDocRef.collection("pixels").doc(key).set({
+        color: newPixel.color,
+        username: newPixel.username,
         timestamp: firebase.firestore.FieldValue.serverTimestamp(),
-      };
-    }
-  });
+      });
 
-  userUndoStack.push(changes);
-  pixelsDocRef.set(pixelData);
-  drawGrid();
-}
+      undoStack.push(action);
+      redoStack.splice(i, 1);
+      redrawCanvas();
+      break;
+    }
+  }
+});
+
+// Tool controls
+
+colorPicker.addEventListener("change", () => {
+  currentColor = colorPicker.value;
+  erasing = false;
+});
+
+brushSizeInput.addEventListener("change", () => {
+  let size = parseInt(brushSizeInput.value, 10);
+  if (isNaN(size) || size < 1) size = 1;
+  if (size > 10) size = 10;
+  brushSize = size;
+  brushSizeInput.value = brushSize;
+});
 
 eraserBtn.addEventListener("click", () => {
-  isEraserActive = !isEraserActive;
-  eraserBtn.style.background = isEraserActive ? "#d32f2f" : "";
+  erasing = !erasing;
+  eraserBtn.style.backgroundColor = erasing ? "#d32f2f" : "";
 });
 
-undoBtn.addEventListener("click", undo);
-redoBtn.addEventListener("click", redo);
+// Export/Import
 
 exportBtn.addEventListener("click", () => {
-  const exportData = JSON.stringify(pixelData, null, 2);
-  const blob = new Blob([exportData], { type: "application/json" });
+  const exportData = {
+    pixels,
+  };
+  const dataStr = JSON.stringify(exportData, null, 2);
+  const blob = new Blob([dataStr], { type: "application/json" });
   const url = URL.createObjectURL(blob);
-
   const a = document.createElement("a");
   a.href = url;
   a.download = `pixel-art-session-${sessionId}.json`;
+  document.body.appendChild(a);
   a.click();
-
+  a.remove();
   URL.revokeObjectURL(url);
 });
 
 importBtn.addEventListener("click", () => {
-  importAreaContainer.style.display = "block";
+  importTextarea.style.display = importTextarea.style.display === "block" ? "none" : "block";
 });
 
 importConfirmBtn.addEventListener("click", () => {
-  try {
-    const importedData = JSON.parse(importTextarea.value);
-    pixelData = importedData;
-    pixelsDocRef.set(pixelData);
-    importAreaContainer.style.display = "none";
-    importTextarea.value = "";
-    userUndoStack = [];
-    userRedoStack = [];
-  } catch (err) {
-    alert("Invalid JSON");
-  }
-});
-
-chatSendBtn.addEventListener("click", async () => {
-  const text = chatText.value.trim();
-  if (!text) return;
-
-  await chatCollectionRef.add({
-    uid: currentUser.uid,
-    username: currentUsername || "Guest",
-    text,
-    timestamp: firebase.firestore.FieldValue.serverTimestamp(),
-  });
-
-  chatText.value = "";
-});
-
-publishBtn.addEventListener("click", async () => {
-  if (currentUser.uid !== sessionCreatorUid) {
-    alert("Only the creator can publish this artwork.");
+  if (!importTextarea.value.trim()) {
+    alert("Paste JSON data to import.");
     return;
   }
   try {
-    await sessionDocRef.update({
-      published: pixelData,
-      publishedAt: firebase.firestore.FieldValue.serverTimestamp(),
-      publishedBy: currentUser.uid,
+    const importData = JSON.parse(importTextarea.value);
+    if (!importData.pixels) throw new Error("Invalid data");
+    // Update local pixels & Firestore
+    const batch = db.batch();
+    Object.entries(importData.pixels).forEach(([key, pixel]) => {
+      const pixelDocRef = sessionDocRef.collection("pixels").doc(key);
+      batch.set(pixelDocRef, pixel);
     });
-    alert("Pixel art published!");
+    // Optionally clear pixels that are not in importData here if needed
+    batch.commit().then(() => {
+      alert("Import successful!");
+      importTextarea.value = "";
+      importTextarea.style.display = "none";
+    });
   } catch (err) {
-    console.error("Publish failed:", err);
-    alert("Failed to publish pixel art.");
+    alert("Failed to import JSON: " + err.message);
   }
 });
 
-// Zoom controls
-const zoomInBtn = document.getElementById("zoom-in-btn");
-const zoomOutBtn = document.getElementById("zoom-out-btn");
-const resetZoomBtn = document.getElementById("reset-zoom-btn");
-
-zoomInBtn.addEventListener("click", () => {
-  zoomLevel = Math.min(zoomLevel + 0.25, 4);
-  drawGrid();
-});
-zoomOutBtn.addEventListener("click", () => {
-  zoomLevel = Math.max(zoomLevel - 0.25, 0.25);
-  drawGrid();
-});
-resetZoomBtn.addEventListener("click", () => {
-  zoomLevel = 1;
-  drawGrid();
+// Logout goes back to lobby and clears session info
+logoutBtn.addEventListener("click", () => {
+  window.location.href = "lobby.html";
 });
 
+// Publish button saves snapshot JSON to session doc
+publishBtn.addEventListener("click", async () => {
+  try {
+    await sessionDocRef.update({
+      publishedPixels: pixels,
+      publishedAt: firebase.firestore.FieldValue.serverTimestamp(),
+    });
+    alert("Artwork published!");
+  } catch (err) {
+    alert("Failed to publish artwork: " + err.message);
+  }
+});
+
+// Back to lobby button
+backToLobbyBtn.addEventListener("click", () => {
+  window.location.href = "lobby.html";
+});
+
+// Listen for canvas pixels changes in Firestore
 function listenCanvasUpdates() {
-  pixelsDocRef.onSnapshot((docSnap) => {
-    if (docSnap.exists) {
-      pixelData = docSnap.data();
-      drawGrid();
-    }
+  sessionDocRef.collection("pixels").onSnapshot((snapshot) => {
+    snapshot.docChanges().forEach((change) => {
+      const key = change.doc.id;
+      const data = change.doc.data();
+
+      if (change.type === "removed") {
+        delete pixels[key];
+      } else {
+        pixels[key] = {
+          color: data.color,
+          username: data.username,
+        };
+      }
+    });
+    redrawCanvas();
   });
 }
 
+// Chat logic
+
 function listenChat() {
-  chatCollectionRef.orderBy("timestamp", "asc").onSnapshot((snapshot) => {
+  sessionDocRef.collection("chat").orderBy("timestamp").onSnapshot((snapshot) => {
     chatMessages.innerHTML = "";
     snapshot.forEach((doc) => {
-      const msg = doc.data();
-      const div = document.createElement("div");
-      const timeStr = msg.timestamp
-        ? new Date(msg.timestamp.toDate()).toLocaleTimeString()
-        : "";
+      const data = doc.data();
+      const username = data.username || "Guest";
+      const msg = data.message;
+      const time = data.timestamp ? data.timestamp.toDate().toLocaleTimeString() : "";
 
-      div.textContent = `[${timeStr}] ${msg.username || "Guest"}: ${msg.text}`;
+      const div = document.createElement("div");
+      div.textContent = `[${time}] ${username}: ${msg}`;
       chatMessages.appendChild(div);
     });
     chatMessages.scrollTop = chatMessages.scrollHeight;
   });
 }
 
-logoutBtn.addEventListener("click", () => {
-  auth.signOut();
+chatSendBtn.addEventListener("click", sendMessage);
+chatInput.addEventListener("keypress", (e) => {
+  if (e.key === "Enter") sendMessage();
 });
 
-backLobbyBtn.addEventListener("click", () => {
-  window.location.href = "lobby.html";
-});
+function sendMessage() {
+  const message = chatInput.value.trim();
+  if (message.length === 0) return;
 
-auth.onAuthStateChanged(async (user) => {
-  if (!user) {
-    alert("Not logged in");
-    window.location.href = "index.html";
-  } else {
-    currentUser = user;
-    currentUsername = user.displayName || user.email || "Guest";
+  sessionDocRef.collection("chat").add({
+    username: currentUsername,
+    message,
+    timestamp: firebase.firestore.FieldValue.serverTimestamp(),
+  });
 
-    // Get session creator UID to enable publish button
-    const sessionDoc = await sessionDocRef.get();
-    if (sessionDoc.exists) {
-      sessionCreatorUid = sessionDoc.data().creatorUid;
-      if (currentUser.uid === sessionCreatorUid) {
-        publishBtn.style.display = "inline-block";
-      } else {
-        publishBtn.style.display = "none";
-      }
-    }
-
-    listenCanvasUpdates();
-    listenChat();
-  }
-});
+  chatInput.value = "";
+}
 
 // Initial draw
+clearCanvas();
 drawGrid();
